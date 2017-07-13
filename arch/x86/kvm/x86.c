@@ -8,6 +8,7 @@
  * Copyright (C) 2008 Qumranet, Inc.
  * Copyright IBM Corporation, 2008
  * Copyright 2010 Red Hat, Inc. and/or its affiliates.
+ * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
  *
  * Authors:
  *   Avi Kivity   <avi@qumranet.com>
@@ -73,6 +74,8 @@
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
+
+#include <linux/kvm_vmi.h>
 
 #define MAX_IO_MSRS 256
 #define KVM_MAX_MCE_BANKS 32
@@ -4466,11 +4469,28 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		r = kvm_vcpu_ioctl_enable_cap(vcpu, &cap);
 		break;
 	}
+	case KVM_VMI_FEATURE_UPDATE: {
+		union kvm_vmi_feature feature;
+
+		r = -EFAULT;
+		if (copy_from_user(&feature, argp, sizeof(feature)))
+		    goto out;
+
+		r = kvm_x86_ops->vmi_feature_control(vcpu, &feature);
+		break;
+	}
+	case KVM_VMI_GET_LBR: {
+		r = -EFAULT;
+		if (copy_to_user(argp, &vcpu->vmi_lbr, sizeof(struct kvm_vmi_lbr_info)))
+		    goto out;
+
+		r = 0;
+
+		break;
+	}
 	case KVM_GET_NESTED_STATE: {
 		struct kvm_nested_state __user *user_kvm_nested_state = argp;
 		u32 user_data_size;
-
-		r = -EINVAL;
 		if (!kvm_x86_ops->get_nested_state)
 			break;
 
