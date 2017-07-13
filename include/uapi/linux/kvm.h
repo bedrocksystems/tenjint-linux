@@ -6,12 +6,29 @@
  * Userspace interface for /dev/kvm - kernel based virtual machine
  *
  * Note: you must update KVM_API_VERSION if you change this interface.
+ *
+ * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
+
 
 #include <linux/types.h>
 #include <linux/compiler.h>
 #include <linux/ioctl.h>
 #include <asm/kvm.h>
+
+#include <linux/kvm_vmi.h>
 
 #define KVM_API_VERSION 12
 
@@ -396,10 +413,13 @@ struct kvm_run {
 		char padding[256];
 	};
 
+    union kvm_vmi_event vmi_event;
+
 	/* 2048 is the size of the char array used to bound/pad the size
 	 * of the union that holds sync regs.
 	 */
 	#define SYNC_REGS_SIZE_BYTES 2048
+
 	/*
 	 * shared registers between kvm and userspace.
 	 * kvm_valid_regs specifies the register classes set by the host
