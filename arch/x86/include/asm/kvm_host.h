@@ -3,6 +3,12 @@
  * Kernel-based Virtual Machine driver for Linux
  *
  * This header defines architecture specific interfaces, x86 version
+ *
+ * Copyright (c) 2017 FireEye, Inc. All Rights Reserved.
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2.  See
+ * the COPYING file in the top-level directory.
+ *
  */
 
 #ifndef _ASM_X86_KVM_HOST_H
@@ -34,6 +40,8 @@
 #include <asm/kvm_page_track.h>
 #include <asm/kvm_vcpu_regs.h>
 #include <asm/hyperv-tlfs.h>
+
+#include <linux/kvm_vmi.h>
 
 #define KVM_MAX_VCPUS 288
 #define KVM_SOFT_MAX_VCPUS 240
@@ -1203,6 +1211,8 @@ struct kvm_x86_ops {
 	uint16_t (*nested_get_evmcs_version)(struct kvm_vcpu *vcpu);
 
 	bool (*need_emulation_on_page_fault)(struct kvm_vcpu *vcpu);
+
+	int (*vmi_feature_control)(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature);
 };
 
 struct kvm_arch_async_pf {
