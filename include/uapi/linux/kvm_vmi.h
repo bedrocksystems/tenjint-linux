@@ -76,8 +76,8 @@ struct kvm_vmi_event_debug {
     __u8 single_step;
     __u8 watchpoint;
     __u64 watchpoint_gva;
-    int32_t watchpoint_flags;
-    int32_t exception;
+    __s32 watchpoint_flags;
+    __s32 exception;
 };
 
 union kvm_vmi_event {
@@ -93,8 +93,8 @@ struct kvm_vmi_lbr_info {
     __u64 to[MAX_LBR_ENTRIES];
 };
 
-#define KVM_VMI_FEATURE_UPDATE    _IOW(KVMIO, 0xc0, union kvm_vmi_feature)
-#define KVM_VMI_GET_LBR           _IOW(KVMIO, 0xc2, struct kvm_vmi_lbr_info)
+#define KVM_VMI_FEATURE_UPDATE    _IOW(KVMIO, 0xf0, union kvm_vmi_feature)
+#define KVM_VMI_GET_LBR           _IOW(KVMIO, 0xf1, struct kvm_vmi_lbr_info)
 
 #define KVM_EXIT_VMI_EVENT        1337
 
