@@ -6,7 +6,6 @@
  * Userspace interface for /dev/kvm - kernel based virtual machine
  *
  * Note: you must update KVM_API_VERSION if you change this interface.
- *
  */
 
 
@@ -408,13 +407,12 @@ struct kvm_run {
 		char padding[256];
 	};
 
-    union kvm_vmi_event vmi_event;
+	union kvm_vmi_event vmi_event;
 
 	/* 2048 is the size of the char array used to bound/pad the size
 	 * of the union that holds sync regs.
 	 */
 	#define SYNC_REGS_SIZE_BYTES 2048
-
 	/*
 	 * shared registers between kvm and userspace.
 	 * kvm_valid_regs specifies the register classes set by the host
