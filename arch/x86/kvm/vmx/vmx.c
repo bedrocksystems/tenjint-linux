@@ -4867,6 +4867,7 @@ static int handle_cr(struct kvm_vcpu *vcpu)
 			if (kvm_vmx_task_switch_need_stop(vcpu,cr3,val)){
 				ts = (struct kvm_vmi_event_task_switch *)&vcpu->run->vmi_event;
 				ts->type = KVM_VMI_EVENT_TASK_SWITCH;
+				ts->cpu_num = (__u32)vcpu->vcpu_id;
 				ts->old_cr3 = cr3;
 				ts->new_cr3 = val;
 				vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
@@ -5409,7 +5410,8 @@ static int handle_invalid_op(struct kvm_vcpu *vcpu)
 
 static int handle_monitor_trap(struct kvm_vcpu *vcpu)
 {
-	vcpu->run->vmi_event.type = KVM_VMI_EVENT_MTF;
+	vcpu->run->vmi_event.mtf.type = KVM_VMI_EVENT_MTF;
+	vcpu->run->vmi_event.mtf.cpu_num = (__u32) vcpu->vcpu_id;
 	vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
 	return 0;
 }
