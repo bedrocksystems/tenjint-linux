@@ -104,6 +104,10 @@ bool kvm_vmx_task_switch_need_stop(struct kvm_vcpu *vcpu, u64 cr3_out, u64 cr3_i
 	if(cr3_out == cr3_in)
 		return false;
 
+	entry = kvm_vmi_dtb_get_entry(vcpu,0);
+	if(entry)
+		return true;
+
 	entry = kvm_vmi_dtb_get_entry(vcpu,cr3_out);
 	if(entry && entry->out)
 		return true;
@@ -141,7 +145,7 @@ int vmx_vmi_feature_control_task_switch(struct kvm_vcpu *vcpu, union kvm_vmi_fea
 			vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_TRAP_TASK_SWITCH] = 1;
 		}
 
-		kvm_vmi_dtb_add_update_entry(vcpu,ts->dtb,ts->in,ts->out);
+		kvm_vmi_dtb_add_update_entry(vcpu,ts->dtb,ts->incoming,ts->outgoing);
 	}
 	else {
 		kvm_vmi_dtb_rm_entry(vcpu,ts->dtb);

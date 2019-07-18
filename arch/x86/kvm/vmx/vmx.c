@@ -4719,7 +4719,7 @@ static int handle_cr(struct kvm_vcpu *vcpu)
 			err = handle_set_cr0(vcpu, val);
 			return kvm_complete_insn_gp(vcpu, err);
 		case 3:
-			WARN_ON_ONCE(enable_unrestricted_guest);
+			//WARN_ON_ONCE(enable_unrestricted_guest);
 			cr3 = kvm_read_cr3(vcpu);
 			if (kvm_vmx_task_switch_need_stop(vcpu,cr3,val)){
 				ts = (struct kvm_vmi_event_task_switch *)&vcpu->run->vmi_event;
