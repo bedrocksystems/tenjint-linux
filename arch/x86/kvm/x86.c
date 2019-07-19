@@ -4232,7 +4232,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 	}
 	case KVM_VMI_GET_LBR: {
 		r = -EFAULT;
-		if (copy_to_user(argp, &vcpu->vmi_lbr, sizeof(struct kvm_vmi_lbr_info)))
+		if (copy_to_user(argp, &(vcpu->arch.vmi_lbr), sizeof(struct kvm_vmi_lbr_info)))
 		    goto out;
 
 		r = 0;
