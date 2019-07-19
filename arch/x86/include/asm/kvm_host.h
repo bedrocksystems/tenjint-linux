@@ -40,8 +40,7 @@
 #include <asm/kvm_page_track.h>
 #include <asm/kvm_vcpu_regs.h>
 #include <asm/hyperv-tlfs.h>
-
-#include <linux/kvm_vmi.h>
+#include <asm/kvm_vmi.h>
 
 #define KVM_MAX_VCPUS 288
 #define KVM_SOFT_MAX_VCPUS 240
@@ -791,6 +790,9 @@ struct kvm_vcpu_arch {
 
 	/* AMD MSRC001_0015 Hardware Configuration */
 	u64 msr_hwcr;
+
+	u64 vmi_lbr_select;
+	struct kvm_vmi_lbr_info vmi_lbr;
 };
 
 struct kvm_lpage_info {
