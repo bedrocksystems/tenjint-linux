@@ -331,10 +331,8 @@ struct kvm_vcpu {
 	struct dentry *debugfs_dentry;
 
 	//vmi
-	uint32_t vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
+	u32 vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
 	DECLARE_HASHTABLE(vmi_dtb_ht,7);
-	uint64_t vmi_lbr_select;
-	struct kvm_vmi_lbr_info vmi_lbr;
 };
 
 static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)

@@ -6565,13 +6565,13 @@ static void atomic_switch_lbr_msrs(struct kvm_vcpu *vcpu,
 
 	rdmsrl(vmi_msr_lbr_tos, tos);
 	add_atomic_switch_msr(vmx, vmi_msr_lbr_tos,
-	                      vcpu->vmi_lbr.tos,
+	                      vcpu->arch.vmi_lbr.tos,
 			    		  tos, false);
 
 	if (vmi_msr_lbr_sel_mask){
 		rdmsrl(MSR_LBR_SELECT, select);
 		add_atomic_switch_msr(vmx, MSR_LBR_SELECT,
-							vcpu->vmi_lbr_select,
+							vcpu->arch.vmi_lbr_select,
 							select, false);
 	}
 }
@@ -6589,13 +6589,13 @@ static void store_atomic_switch_lbr_msrs(struct kvm_vcpu *vcpu,
 		to = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_to + i);
 
 		if (from != 0 || to != 0) {
-			vcpu->vmi_lbr.from[i] = from;
-			vcpu->vmi_lbr.to[i] = to;
+			vcpu->arch.vmi_lbr.from[i] = from;
+			vcpu->arch.vmi_lbr.to[i] = to;
 		}
 	}
 
-	vcpu->vmi_lbr.tos = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_tos);
-	vcpu->vmi_lbr.entries = nr_msrs;
+	vcpu->arch.vmi_lbr.tos = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_tos);
+	vcpu->arch.vmi_lbr.entries = nr_msrs;
 }
 
 
@@ -6706,7 +6706,7 @@ static inline int vmx_vmi_lbr_feature_enabled(struct kvm_vcpu *vcpu)
 
 void vmx_vmi_set_lbr_select(struct kvm_vcpu *vcpu, u64 lbr_select)
 {
-	vcpu->vmi_lbr_select = lbr_select & vmi_msr_lbr_sel_mask;
+	vcpu->arch.vmi_lbr_select = lbr_select & vmi_msr_lbr_sel_mask;
 }
 
 int vmx_vmi_enable_lbr(struct kvm_vcpu *vcpu)
