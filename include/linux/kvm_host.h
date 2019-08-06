@@ -883,6 +883,8 @@ void kvm_arch_check_processor_compat(void *rtn);
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *vcpu);
 bool kvm_arch_vcpu_in_kernel(struct kvm_vcpu *vcpu);
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu);
+int kvm_arch_vmi_feature_update(struct kvm_vcpu *vcpu,
+                                union kvm_vmi_feature *feature);
 
 #ifndef __KVM_HAVE_ARCH_VM_ALLOC
 /*
