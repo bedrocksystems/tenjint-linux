@@ -3075,6 +3075,16 @@ out_free1:
 		r = kvm_arch_vcpu_ioctl_set_fpu(vcpu, fpu);
 		break;
 	}
+	case KVM_VMI_FEATURE_UPDATE: {
+		union kvm_vmi_feature feature;
+
+		r = -EFAULT;
+		if (copy_from_user(&feature, argp, sizeof(feature)))
+		    goto out;
+
+		r = kvm_arch_vmi_feature_update(vcpu, &feature);
+		break;
+	}
 	default:
 		r = kvm_arch_vcpu_ioctl(filp, ioctl, arg);
 	}
