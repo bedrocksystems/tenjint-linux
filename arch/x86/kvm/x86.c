@@ -4220,16 +4220,6 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		r = kvm_vcpu_ioctl_enable_cap(vcpu, &cap);
 		break;
 	}
-	case KVM_VMI_FEATURE_UPDATE: {
-		union kvm_vmi_feature feature;
-
-		r = -EFAULT;
-		if (copy_from_user(&feature, argp, sizeof(feature)))
-		    goto out;
-
-		r = kvm_x86_ops->vmi_feature_control(vcpu, &feature);
-		break;
-	}
 	case KVM_VMI_GET_LBR: {
 		r = -EFAULT;
 		if (copy_to_user(argp, &(vcpu->arch.vmi_lbr), sizeof(struct kvm_vmi_lbr_info)))
@@ -4327,6 +4317,12 @@ out_nofree:
 vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
 {
 	return VM_FAULT_SIGBUS;
+}
+
+int kvm_arch_vmi_feature_update(struct kvm_vcpu *vcpu,
+                                union kvm_vmi_feature *feature)
+{
+	return kvm_x86_ops->vmi_feature_control(vcpu, feature);
 }
 
 static int kvm_vm_ioctl_set_tss_addr(struct kvm *kvm, unsigned long addr)
