@@ -330,7 +330,7 @@ struct kvm_vcpu {
 	struct dentry *debugfs_dentry;
 
 	//vmi
-	u32 vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
+	u8 vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
 	DECLARE_HASHTABLE(vmi_dtb_ht,7);
 };
 

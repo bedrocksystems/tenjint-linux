@@ -338,6 +338,9 @@ struct kvm_vcpu_arch {
 	/* True when deferrable sysregs are loaded on the physical CPU,
 	 * see kvm_vcpu_load_sysregs and kvm_vcpu_put_sysregs. */
 	bool sysregs_loaded_on_cpu;
+
+	// VMI
+	u32 vmi_ts_count[3];
 };
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
