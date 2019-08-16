@@ -2446,7 +2446,8 @@ void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled)
 		stage2_flush_vm(vcpu->kvm);
 
 	/* Caches are now on, stop trapping VM ops (until a S/W op) */
-	if (now_enabled)
+	if (now_enabled &&
+	        !vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_TRAP_TASK_SWITCH])
 		*vcpu_hcr(vcpu) &= ~HCR_TVM;
 
 	trace_kvm_toggle_cache(*vcpu_pc(vcpu), was_enabled, now_enabled);

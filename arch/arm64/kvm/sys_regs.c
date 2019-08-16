@@ -27,6 +27,8 @@
 #include <asm/kvm_mmu.h>
 #include <asm/perf_event.h>
 #include <asm/sysreg.h>
+#include <asm/kvm_vmi.h>
+#include <asm/vmi.h>
 
 #include <trace/events/kvm.h>
 
@@ -2273,7 +2275,11 @@ int kvm_handle_sys_reg(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	struct sys_reg_params params;
 	unsigned long esr = kvm_vcpu_get_hsr(vcpu);
 	int Rt = kvm_vcpu_sys_get_rt(vcpu);
+	unsigned long reg = 0;
 	int ret;
+	u64 reg_value;
+	u8 vmi_reg;
+	struct kvm_vmi_event_task_switch *ts;
 
 	trace_kvm_handle_sys_reg(esr);
 
@@ -2287,10 +2293,48 @@ int kvm_handle_sys_reg(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	params.regval = vcpu_get_reg(vcpu, Rt);
 	params.is_write = !(esr & 1);
 
+	if (params.is_write &&
+	        vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_TRAP_TASK_SWITCH]) {
+		reg = reg_to_encoding(&params);
+		switch (reg) {
+			case SYS_TTBR0_EL1:
+				vmi_reg = KVM_VMI_TTBR0;
+				reg_value = vcpu_read_sys_reg(vcpu, TTBR0_EL1);
+				break;
+			case SYS_TTBR1_EL1:
+				vmi_reg = KVM_VMI_TTBR1;
+				reg_value = vcpu_read_sys_reg(vcpu, TTBR1_EL1);
+				break;
+			case SYS_TCR_EL1:
+				vmi_reg = KVM_VMI_TCR;
+				reg_value = vcpu_read_sys_reg(vcpu, TCR_EL1);
+				break;
+			default:
+				reg = 0;
+				break;
+		}
+	}
+
 	ret = emulate_sys_reg(vcpu, &params);
 
-	if (!params.is_write)
+	if (!params.is_write){
 		vcpu_set_reg(vcpu, Rt, params.regval);
+	}
+
+	if (reg) {
+		if (kvm_arm64_task_switch_need_stop(vcpu, vmi_reg, reg_value,
+		        params.regval)) {
+			ts = (struct kvm_vmi_event_task_switch *)&vcpu->run->vmi_event;
+			ts->type = KVM_VMI_EVENT_TASK_SWITCH;
+			ts->cpu_num = (__u32)vcpu->vcpu_id;
+			ts->reg = vmi_reg;
+			ts->old_val = reg_value;
+			ts->new_val = params.regval;
+			vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+			ret = 0;
+		}
+	}
+
 	return ret;
 }
 
