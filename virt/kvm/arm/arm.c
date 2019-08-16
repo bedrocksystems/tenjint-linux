@@ -39,6 +39,7 @@
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_coproc.h>
 #include <asm/sections.h>
+#include <asm/vmi.h>
 
 #include <kvm/arm_hypercalls.h>
 #include <kvm/arm_pmu.h>
@@ -310,6 +311,7 @@ struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm, unsigned int id)
 
 	return vcpu;
 vcpu_uninit:
+	kvm_vmi_vcpu_uninit(vcpu);
 	kvm_vcpu_uninit(vcpu);
 free_vcpu:
 	kmem_cache_free(kvm_vcpu_cache, vcpu);
@@ -326,6 +328,7 @@ void kvm_arch_vcpu_free(struct kvm_vcpu *vcpu)
 	if (vcpu->arch.has_run_once && unlikely(!irqchip_in_kernel(vcpu->kvm)))
 		static_branch_dec(&userspace_irqchip_in_use);
 
+	kvm_vmi_vcpu_uninit(vcpu);
 	kvm_mmu_free_memory_caches(vcpu);
 	kvm_timer_vcpu_terminate(vcpu);
 	kvm_pmu_vcpu_destroy(vcpu);
@@ -382,6 +385,8 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 	kvm_arm_reset_debug_ptr(vcpu);
 
 	kvm_arm_pvtime_vcpu_init(&vcpu->arch);
+
+	kvm_vmi_vcpu_init(vcpu);
 
 	return kvm_vgic_vcpu_init(vcpu);
 }

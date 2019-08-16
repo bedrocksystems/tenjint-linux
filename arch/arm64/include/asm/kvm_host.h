@@ -354,6 +354,9 @@ struct kvm_vcpu_arch {
 		u64 last_steal;
 		gpa_t base;
 	} steal;
+
+	// VMI
+	u32 vmi_ts_count[3];
 };
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
