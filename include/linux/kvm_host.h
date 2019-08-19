@@ -332,6 +332,7 @@ struct kvm_vcpu {
 	//vmi
 	u8 vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
 	DECLARE_HASHTABLE(vmi_dtb_ht,7);
+	bool vmi_slp_trapping_enabled;
 };
 
 static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)
@@ -886,6 +887,8 @@ int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu);
 bool kvm_arch_dy_runnable(struct kvm_vcpu *vcpu);
 int kvm_arch_vmi_feature_update(struct kvm_vcpu *vcpu,
                                 union kvm_vmi_feature *feature);
+int mmu_update_spte_permissions(struct kvm_vcpu *vcpu, u64 gpa,
+                                u64 pte_access);
 
 #ifndef __KVM_HAVE_ARCH_VM_ALLOC
 /*
