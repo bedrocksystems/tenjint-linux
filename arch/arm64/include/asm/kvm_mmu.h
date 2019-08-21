@@ -221,6 +221,42 @@ static inline pud_t kvm_s2pud_mkexec(pud_t pud)
 	return pud;
 }
 
+static inline void kvm_set_s2pte(pte_t *ptep, u64 perm)
+{
+	pteval_t old_pteval, pteval, hw_perm = 0;
+
+	if (!(perm & KVM_VMI_SLP_X)) {
+		hw_perm |= PTE_S2_XN;
+	}
+
+	if (perm & KVM_VMI_SLP_W) {
+		hw_perm |= PTE_S2_RDWR;
+	}
+
+	if (perm & KVM_VMI_SLP_R) {
+		hw_perm |= PTE_S2_RDONLY;
+	}
+
+	pteval = READ_ONCE(pte_val(*ptep));
+	do {
+		old_pteval = pteval;
+		pteval &= ~PTE_S2_RDWR;
+		pteval &= ~PTE_S2_XN;
+		pteval |= hw_perm;
+		pteval = cmpxchg_relaxed(&pte_val(*ptep), old_pteval, pteval);
+	} while (pteval != old_pteval);
+}
+
+static inline void kvm_set_s2pmd(pmd_t *pmdp, u64 perm)
+{
+	kvm_set_s2pte((pte_t*)pmdp, perm);
+}
+
+static inline void kvm_set_s2pud(pud_t *pudp, u64 perm)
+{
+	kvm_set_s2pte((pte_t*)pudp, perm);
+}
+
 static inline void kvm_set_s2pte_readonly(pte_t *ptep)
 {
 	pteval_t old_pteval, pteval;
