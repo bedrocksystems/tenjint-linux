@@ -1671,11 +1671,13 @@ static u64 get_vmi_perm(struct kvm_vcpu *vcpu, bool writable, bool read_fault,
 	u64 perm = 0;
 
 	if (writable || read_fault) {
-		unsigned long pc_base = *vcpu_pc(vcpu) << PAGE_SHIFT;
-		unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) << PAGE_SHIFT;
 		perm |= (KVM_VMI_SLP_R | KVM_VMI_SLP_W);
-		if (pc_base == fa_base)
-			perm |= KVM_VMI_SLP_X;
+		if (vcpu != NULL) {
+			unsigned long pc_base = *vcpu_pc(vcpu) << PAGE_SHIFT;
+			unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) << PAGE_SHIFT;
+			if (pc_base == fa_base)
+				perm |= KVM_VMI_SLP_X;
+		}
 	}
 	if (needs_exec) {
 		perm |= (KVM_VMI_SLP_R | KVM_VMI_SLP_X);
@@ -1728,7 +1730,8 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	vma_pagesize = vma_kernel_pagesize(vma);
 	if (logging_active ||
 	    (vma->vm_flags & VM_PFNMAP) ||
-	    !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize)) {
+	    !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize) ||
+	    vcpu->vmi_slp_trapping_enabled) {
 		force_pte = true;
 		vma_pagesize = PAGE_SIZE;
 	}
@@ -1831,24 +1834,16 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	needs_exec = exec_fault ||
 		(fault_status == FSC_PERM && stage2_is_exec(kvm, fault_ipa));
 
-	printk(KERN_ERR "%s: cpu%d: writable=%d, read_fault=%d, needs_exec=%d\n", __func__, vcpu->vcpu_id, writable, read_fault, needs_exec);
 	if (vma_pagesize == PUD_SIZE) {
 		pud_t new_pud = kvm_pfn_pud(pfn, mem_type);
 
 		new_pud = kvm_pud_mkhuge(new_pud);
 
-		if (vcpu->vmi_slp_trapping_enabled) {
-			perm = get_vmi_perm(vcpu, writable, read_fault, needs_exec);
-			printk(KERN_ERR "%s: cpu%d: setting pud with perm %llx\n", __func__, vcpu->vcpu_id, perm);
-			kvm_set_s2pud(&new_pud, perm);
-		}
-		else {
-			if (writable)
-				new_pud = kvm_s2pud_mkwrite(new_pud);
+		if (writable)
+			new_pud = kvm_s2pud_mkwrite(new_pud);
 
-			if (needs_exec)
-				new_pud = kvm_s2pud_mkexec(new_pud);
-		}
+		if (needs_exec)
+			new_pud = kvm_s2pud_mkexec(new_pud);
 
 		ret = stage2_set_pud_huge(kvm, memcache, fault_ipa, &new_pud);
 	} else if (vma_pagesize == PMD_SIZE) {
@@ -1856,27 +1851,23 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 		new_pmd = kvm_pmd_mkhuge(new_pmd);
 
-		if (vcpu->vmi_slp_trapping_enabled) {
-			perm = get_vmi_perm(vcpu, writable, read_fault, needs_exec);
-			printk(KERN_ERR "%s: cpu%d: setting pmd with perm %llx\n", __func__, vcpu->vcpu_id, perm);
-			kvm_set_s2pmd(&new_pmd, perm);
-		}
-		else {
-			if (writable)
-				new_pmd = kvm_s2pmd_mkwrite(new_pmd);
+		if (writable)
+			new_pmd = kvm_s2pmd_mkwrite(new_pmd);
 
-			if (needs_exec)
-				new_pmd = kvm_s2pmd_mkexec(new_pmd);
-		}
+		if (needs_exec)
+			new_pmd = kvm_s2pmd_mkexec(new_pmd);
 
 		ret = stage2_set_pmd_huge(kvm, memcache, fault_ipa, &new_pmd);
 	} else {
 		pte_t new_pte = kvm_pfn_pte(pfn, mem_type);
 
-		if (vcpu->vmi_slp_trapping_enabled) {
-			perm = get_vmi_perm(vcpu, writable, read_fault, needs_exec);
-			printk(KERN_ERR "%s: cpu%d: setting pte with perm %llx\n", __func__, vcpu->vcpu_id, perm);
-			kvm_set_s2pte(&new_pte, perm);
+		if (vcpu->vmi_slp_trapping_enabled && !kvm_is_device_pfn(pfn)) {
+			if (fault_status == FSC_PERM) {
+				perm = get_vmi_perm(vcpu, write_fault, read_fault, exec_fault);
+				//printk(KERN_ERR "%s: cpu%d: write_fault=%d, read_fault=%d, exec_fault=%d\n", __func__, vcpu->vcpu_id, write_fault, read_fault, exec_fault);
+				//printk(KERN_ERR "%s: cpu%d: setting pte %llx with perm %llx\n", __func__, vcpu->vcpu_id, fault_ipa, perm);
+				kvm_set_s2pte(&new_pte, perm);
+			}
 		}
 		else {
 			if (writable) {
@@ -1900,7 +1891,7 @@ out_unlock:
 
 int mmu_update_spte_permissions(struct kvm_vcpu *vcpu, u64 gpa,
                                 u64 pte_access) {
-	int rv = 0;
+	int rv = -EFAULT;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
@@ -1909,33 +1900,19 @@ int mmu_update_spte_permissions(struct kvm_vcpu *vcpu, u64 gpa,
 	spin_lock(&vcpu->kvm->mmu_lock);
 
 	if (!stage2_get_leaf_entry(vcpu->kvm, gpa, &pud, &pmd, &pte)) {
-		rv = -EFAULT;
 		goto out;
 	}
 
-	if (pud) {		/* HugeTLB */
-		pfn = kvm_pud_pfn(*pud);
-		if (kvm_is_device_pfn(pfn)) {
-			rv = -EPERM;
-			goto out;
-		}
-		kvm_set_s2pud(pud, pte_access);
-	} else	if (pmd) {	/* THP, HugeTLB */
-		pfn = pmd_pfn(*pmd);
-		if (kvm_is_device_pfn(pfn)) {
-			rv = -EPERM;
-			goto out;
-		}
-		kvm_set_s2pmd(pmd, pte_access);
-	} else {
+	if (pte) {
 		pfn = pte_pfn(*pte);
 		if (kvm_is_device_pfn(pfn)) {
 			rv = -EPERM;
 			goto out;
 		}
 		kvm_set_s2pte(pte, pte_access);
+		kvm_tlb_flush_vmid_ipa(vcpu->kvm, gpa);
+		rv = 0;
 	}
-	kvm_tlb_flush_vmid_ipa(vcpu->kvm, gpa);
 
 out:
 	spin_unlock(&vcpu->kvm->mmu_lock);
@@ -2153,6 +2130,7 @@ int kvm_unmap_hva_range(struct kvm *kvm,
 static int kvm_set_spte_handler(struct kvm *kvm, gpa_t gpa, u64 size, void *data)
 {
 	pte_t *pte = (pte_t *)data;
+	u64 perm;
 
 	WARN_ON(size != PAGE_SIZE);
 	/*
@@ -2162,6 +2140,8 @@ static int kvm_set_spte_handler(struct kvm *kvm, gpa_t gpa, u64 size, void *data
 	 * therefore stage2_set_pte() never needs to clear out a huge PMD
 	 * through this calling path.
 	 */
+	perm = get_vmi_perm(NULL, true, true, false);
+	kvm_set_s2pte(pte, perm);
 	stage2_set_pte(kvm, NULL, gpa, pte, 0);
 	return 0;
 }
