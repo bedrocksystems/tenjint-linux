@@ -64,5 +64,7 @@ void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu);
 void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu);
 bool kvm_arm64_task_switch_need_stop(struct kvm_vcpu *vcpu, u8 reg,
                                      u64 in_value, u64 out_value);
+bool kvm_arm64_slp_need_stop(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
+                             bool write_fault, bool exec_fault);
 
 #endif
