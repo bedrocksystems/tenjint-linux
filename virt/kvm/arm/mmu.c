@@ -19,6 +19,7 @@
 #include <asm/kvm_asm.h>
 #include <asm/kvm_emulate.h>
 #include <asm/virt.h>
+#include <asm/vmi.h>
 
 #include "trace.h"
 
@@ -1697,13 +1698,15 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	bool logging_active = memslot_is_logging(memslot);
 	unsigned long vma_pagesize, flags = 0;
 	u64 perm = 0;
+	bool vmi_need_stop = false;
+	struct kvm_vmi_event_slp *slp;
 
 	write_fault = kvm_is_write_fault(vcpu);
 	exec_fault = kvm_vcpu_trap_is_iabt(vcpu);
 	VM_BUG_ON(write_fault && exec_fault);
 
 	if (fault_status == FSC_PERM && !write_fault && !exec_fault) {
-		if (!vcpu->vmi_slp_trapping_enabled) {
+		if (!vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]) {
 			kvm_err("Unexpected L2 read permission error\n");
 			return -EFAULT;
 		}
@@ -1725,7 +1728,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	vma_pagesize = vma_kernel_pagesize(vma);
 	if (logging_active ||
 	    !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize) ||
-	    vcpu->vmi_slp_trapping_enabled) {
+	    vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]) {
 		force_pte = true;
 		vma_pagesize = PAGE_SIZE;
 	}
@@ -1852,12 +1855,33 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	} else {
 		pte_t new_pte = kvm_pfn_pte(pfn, mem_type);
 
-		if (vcpu->vmi_slp_trapping_enabled && !kvm_is_device_pfn(pfn)) {
+		if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
+		        !kvm_is_device_pfn(pfn)) {
 			if (fault_status == FSC_PERM) {
-				perm = get_vmi_perm(vcpu, write_fault, read_fault, exec_fault);
-				//printk(KERN_ERR "%s: cpu%d: write_fault=%d, read_fault=%d, exec_fault=%d\n", __func__, vcpu->vcpu_id, write_fault, read_fault, exec_fault);
-				//printk(KERN_ERR "%s: cpu%d: setting pte %llx with perm %llx\n", __func__, vcpu->vcpu_id, fault_ipa, perm);
-				kvm_set_s2pte(&new_pte, perm);
+				if (kvm_arm64_slp_need_stop(vcpu, fault_ipa, read_fault,
+				                            write_fault, exec_fault)) {
+					slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
+					slp->type = KVM_VMI_EVENT_SLP;
+					slp->cpu_num = (__u32)vcpu->vcpu_id;
+					slp->violation = read_fault ? KVM_VMI_SLP_R : 0;
+					slp->violation |= write_fault ? KVM_VMI_SLP_W : 0;
+					slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
+					slp->gva = kvm_vcpu_get_hfar(vcpu);
+					/*
+					* The IPA is reported as [MAX:12], so we need to
+					* complement it with the bottom 12 bits from the
+					* faulting VA. This is always 12 bits, irrespective
+					* of the page size.
+					*/
+					slp->gpa = fault_ipa | (slp->gva & ((1 << 12) - 1));
+					vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+					vmi_need_stop = true;
+				}
+				else {
+					perm = get_vmi_perm(vcpu, write_fault, read_fault,
+					                    exec_fault);
+					kvm_set_s2pte(&new_pte, perm);
+				}
 			}
 		}
 		else {
@@ -1877,6 +1901,8 @@ out_unlock:
 	spin_unlock(&kvm->mmu_lock);
 	kvm_set_pfn_accessed(pfn);
 	kvm_release_pfn_clean(pfn);
+	if (!ret && vmi_need_stop)
+		ret = 1;
 	return ret;
 }
 
@@ -2060,6 +2086,8 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	ret = user_mem_abort(vcpu, fault_ipa, memslot, hva, fault_status);
 	if (ret == 0)
 		ret = 1;
+	else if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] && ret == 1)
+		ret = 0;
 out_unlock:
 	srcu_read_unlock(&vcpu->kvm->srcu, idx);
 	return ret;

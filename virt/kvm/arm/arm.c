@@ -1017,8 +1017,6 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	else
 		vcpu->arch.power_off = false;
 
-	vcpu->vmi_slp_trapping_enabled = true;
-
 	return 0;
 }
 

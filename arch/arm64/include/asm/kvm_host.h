@@ -341,6 +341,8 @@ struct kvm_vcpu_arch {
 
 	// VMI
 	u32 vmi_ts_count[3];
+	u32 vmi_slp_global[3];
+	DECLARE_HASHTABLE(vmi_slp_ht,7);
 };
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
