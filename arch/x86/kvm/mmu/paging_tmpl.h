@@ -663,7 +663,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gpa_t addr,
 			goto out_gpte_changed;
 
 		if (sp)
-			link_shadow_page(vcpu, it.sptep, sp);
+			link_shadow_page(vcpu, it.sptep, sp, it.level);
 	}
 
 	/*
@@ -695,7 +695,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gpa_t addr,
 		if (!is_shadow_present_pte(*it.sptep)) {
 			sp = kvm_mmu_get_page(vcpu, base_gfn, addr,
 					      it.level - 1, true, direct_access);
-			link_shadow_page(vcpu, it.sptep, sp);
+			link_shadow_page(vcpu, it.sptep, sp, it.level);
 			if (lpage_disallowed)
 				account_huge_nx_page(vcpu->kvm, sp);
 		}

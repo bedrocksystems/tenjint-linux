@@ -2566,6 +2566,11 @@ static struct kvm_mmu_page *kvm_mmu_get_page(struct kvm_vcpu *vcpu,
 	role.direct = direct;
 	if (role.direct)
 		role.gpte_is_8_bytes = true;
+	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
+	        level == PT_PAGE_TABLE_LEVEL) {
+		if (access & ACC_WRITE_MASK)
+			access &= ~ACC_EXEC_MASK;
+	}
 	role.access = access;
 	if (!vcpu->arch.mmu->direct_map
 	    && vcpu->arch.mmu->root_level <= PT32_ROOT_LEVEL) {
@@ -2700,14 +2705,21 @@ static void shadow_walk_next(struct kvm_shadow_walk_iterator *iterator)
 }
 
 static void link_shadow_page(struct kvm_vcpu *vcpu, u64 *sptep,
-			     struct kvm_mmu_page *sp)
+			     struct kvm_mmu_page *sp, int level)
 {
 	u64 spte;
 
 	BUILD_BUG_ON(VMX_EPT_WRITABLE_MASK != PT_WRITABLE_MASK);
 
-	spte = __pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
-	       shadow_user_mask | shadow_x_mask | shadow_me_mask;
+	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] && is_last_spte(*sptep, level)) {
+		spte = (__pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
+				shadow_user_mask | shadow_me_mask | shadow_nx_mask) &
+				~shadow_x_mask;
+	}
+	else {
+		spte = __pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
+				shadow_user_mask | shadow_x_mask | shadow_me_mask;
+	}
 
 	if (sp_ad_disabled(sp))
 		spte |= SPTE_AD_DISABLED_MASK;
@@ -3020,6 +3032,79 @@ static bool mmu_need_write_protect(struct kvm_vcpu *vcpu, gfn_t gfn,
 	return false;
 }
 
+int mmu_update_spte_permissions(struct kvm_vcpu *vcpu, u64 gpa,
+                                u64 pte_access)
+{
+	struct kvm_shadow_walk_iterator iterator;
+	int level;
+	u64 gfn = gpa >> PAGE_SHIFT;
+	u64 *sptep;
+	u64 new_spte;
+	kvm_pfn_t pfn;
+	struct kvm_memory_slot *slot;
+	int write = pte_access & KVM_VMI_SLP_W;
+	bool map_writable;
+	int rv = 0;
+
+	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+	pfn = __gfn_to_pfn_memslot(slot, gfn, false, NULL, write, &map_writable);
+
+	spin_lock(&vcpu->kvm->mmu_lock);
+
+	if (!VALID_PAGE(vcpu->arch.mmu->root_hpa)) {
+		spin_unlock(&vcpu->kvm->mmu_lock);
+		return -1;
+	}
+
+	for_each_shadow_entry(vcpu, gpa, iterator) {
+		level = iterator.level;
+		sptep = iterator.sptep;
+
+		if (!is_shadow_present_pte(*sptep) || is_mmio_spte(*sptep)) {
+			rv = -1;
+			break;
+		}
+
+		if (is_last_spte(*sptep, level)) {
+			if (pfn != spte_to_pfn(*sptep)) {
+				rv = -1;
+				break;
+			}
+
+			//update sptep with permissions
+			new_spte = *sptep;
+			new_spte &= ~(shadow_x_mask | shadow_nx_mask |
+			              shadow_user_mask | PT_WRITABLE_MASK);
+
+			if (pte_access & KVM_VMI_SLP_X)
+				new_spte |= shadow_x_mask;
+			else
+				new_spte |= shadow_nx_mask;
+
+			if (pte_access & (KVM_VMI_SLP_R | KVM_VMI_SLP_W))
+				new_spte |= shadow_user_mask;
+
+			if (pte_access & KVM_VMI_SLP_W) {
+				if (mmu_need_write_protect(vcpu, gfn, true)) {
+					rv = -1;
+					break;
+				}
+
+				new_spte |= PT_WRITABLE_MASK | SPTE_HOST_WRITEABLE | SPTE_MMU_WRITEABLE;
+				kvm_vcpu_mark_page_dirty(vcpu, gfn);
+				new_spte |= spte_shadow_dirty_mask(new_spte);
+			}
+
+			if (mmu_spte_update(sptep, new_spte))
+				kvm_flush_remote_tlbs_with_address(vcpu->kvm, gfn, 1);
+			break;
+		}
+	}
+	spin_unlock(&vcpu->kvm->mmu_lock);
+	return rv;
+}
+EXPORT_SYMBOL_GPL(mmu_update_spte_permissions);
+
 static bool kvm_is_mmio_pfn(kvm_pfn_t pfn)
 {
 	if (pfn_valid(pfn))
@@ -3056,6 +3141,11 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 
 	if (set_mmio_spte(vcpu, sptep, gfn, pfn, pte_access))
 		return 0;
+
+	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
+	        !is_shadow_present_pte(*sptep)) {
+		pte_access &= ~ACC_EXEC_MASK;
+	}
 
 	sp = page_header(__pa(sptep));
 	if (sp_ad_disabled(sp))
@@ -3330,12 +3420,17 @@ static int __direct_map(struct kvm_vcpu *vcpu, gpa_t gpa, int write,
 	int ret;
 	gfn_t gfn = gpa >> PAGE_SHIFT;
 	gfn_t base_gfn = gfn;
+	unsigned int pte_access = ACC_ALL;
 
 	if (!VALID_PAGE(vcpu->arch.mmu->root_hpa))
 		return RET_PF_RETRY;
 
 	trace_kvm_mmu_spte_requested(gpa, level, pfn);
 	for_each_shadow_entry(vcpu, gpa, it) {
+		if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
+		        is_last_spte(*it.sptep, it.level)) {
+			pte_access = (ACC_WRITE_MASK | ACC_USER_MASK);
+		}
 		/*
 		 * We cannot overwrite existing page tables with an NX
 		 * large page, as the leaf could be executable.
@@ -3349,15 +3444,15 @@ static int __direct_map(struct kvm_vcpu *vcpu, gpa_t gpa, int write,
 		drop_large_spte(vcpu, it.sptep);
 		if (!is_shadow_present_pte(*it.sptep)) {
 			sp = kvm_mmu_get_page(vcpu, base_gfn, it.addr,
-					      it.level - 1, true, ACC_ALL);
+					      it.level - 1, true, pte_access);
 
-			link_shadow_page(vcpu, it.sptep, sp);
+			link_shadow_page(vcpu, it.sptep, sp, it.level);
 			if (lpage_disallowed)
 				account_huge_nx_page(vcpu->kvm, sp);
 		}
 	}
 
-	ret = mmu_set_spte(vcpu, it.sptep, ACC_ALL,
+	ret = mmu_set_spte(vcpu, it.sptep, pte_access,
 			   write, level, base_gfn, pfn, prefault,
 			   map_writable);
 	direct_pte_prefetch(vcpu, it.sptep);
@@ -3590,6 +3685,10 @@ static bool fast_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa, int level,
 		    spte_can_locklessly_be_made_writable(spte))
 		{
 			new_spte |= PT_WRITABLE_MASK;
+			if(vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]){
+				new_spte |= shadow_nx_mask;
+				new_spte &= ~shadow_x_mask;
+			}
 
 			/*
 			 * Do not fix write-permission on the large spte.  Since

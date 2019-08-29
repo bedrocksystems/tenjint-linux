@@ -5186,6 +5186,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 {
 	unsigned long exit_qualification;
 	gpa_t gpa;
+	gva_t gva, rip;
 	u64 error_code;
 
 	exit_qualification = vmcs_readl(EXIT_QUALIFICATION);
@@ -5223,6 +5224,47 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	       PFERR_GUEST_FINAL_MASK : PFERR_GUEST_PAGE_MASK;
 
 	vcpu->arch.exit_qualification = exit_qualification;
+
+	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]){
+		gva = vmcs_readl(GUEST_LINEAR_ADDRESS);
+		rip = kvm_rip_read(vcpu);
+		// not present
+		if (!(error_code & PFERR_PRESENT_MASK)) {
+			return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+		}
+		// read or write
+		else if (error_code & (PFERR_USER_MASK | PFERR_WRITE_MASK)) {
+			// if rwx case
+			if ((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT)) {
+				printk(KERN_WARNING "\t%s: cpu%d: RWX case\n", __func__, vcpu->vcpu_id);
+				if (mmu_update_spte_permissions(vcpu, gpa,
+				        KVM_VMI_SLP_R | KVM_VMI_SLP_W | KVM_VMI_SLP_X) == -1) {
+					return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+				}
+			}
+			else {
+				if (mmu_update_spte_permissions(vcpu, gpa,
+				        (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) == -1) {
+					return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+				}
+			}
+		}
+		// execute
+		else if (error_code & PFERR_FETCH_MASK) {
+			if (mmu_update_spte_permissions(vcpu, gpa,
+			        (KVM_VMI_SLP_R | KVM_VMI_SLP_X)) == -1) {
+				return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+			}
+		}
+		else {
+			printk(KERN_ERR "%s: Unexpected EPT exit (error_code=0x%llx)\n",
+			        __func__, error_code);
+			return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+		}
+		// dont return to userland
+		return 1;
+	}
+
 	return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 }
 
