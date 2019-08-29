@@ -4304,6 +4304,26 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		r = 0;
 		break;
 	}
+	case KVM_VMI_FEATURE_UPDATE: {
+		union kvm_vmi_feature feature;
+
+		r = -EFAULT;
+		if (copy_from_user(&feature, argp, sizeof(feature)))
+		    goto out;
+
+		r = kvm_arch_vmi_feature_update(vcpu, &feature);
+		break;
+	}
+	case KVM_VMI_SET_SLP: {
+		struct kvm_vmi_slp_perm slp_perm;
+
+		r = -EFAULT;
+		if (copy_from_user(&slp_perm, argp, sizeof(slp_perm)))
+		    goto out;
+
+		r = kvm_arch_vmi_slp_update(vcpu, &slp_perm);
+		break;
+	}
 	default:
 		r = -EINVAL;
 	}
