@@ -8004,6 +8004,7 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.need_emulation_on_page_fault = vmx_need_emulation_on_page_fault,
 
 	.vmi_feature_control = vmx_vmi_feature_control,
+	.vmi_slp_update = vmx_vmi_slp_update,
 };
 
 void vmx_vmi_update_execution_controls(u32 exec_control)

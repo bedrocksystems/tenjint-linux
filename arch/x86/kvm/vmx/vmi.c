@@ -121,16 +121,14 @@ bool kvm_vmx_task_switch_need_stop(struct kvm_vcpu *vcpu, u64 cr3_out, u64 cr3_i
 
 void vmx_vmi_enable_task_switch_trapping(struct kvm_vcpu *vcpu)
 {
-	u32 exec_ctls;
-	exec_ctls = vmx_vmi_get_execution_controls();
+	u32 exec_ctls = vmx_vmi_get_execution_controls();
 	exec_ctls |= CPU_BASED_CR3_LOAD_EXITING;
 	vmx_vmi_update_execution_controls(exec_ctls);
 }
 
 void vmx_vmi_disable_task_switch_trapping(struct kvm_vcpu *vcpu)
 {
-	u32 exec_ctls;
-	exec_ctls = vmx_vmi_get_execution_controls();
+	u32 exec_ctls = vmx_vmi_get_execution_controls();
 	exec_ctls &= ~CPU_BASED_CR3_LOAD_EXITING;
 	vmx_vmi_update_execution_controls(exec_ctls);
 }
@@ -217,4 +215,8 @@ int vmx_vmi_feature_control(struct kvm_vcpu *vcpu, union kvm_vmi_feature *featur
 	}
 
 	return rv;
+}
+
+int vmx_vmi_slp_update(struct kvm_vcpu *vcpu, struct kvm_vmi_slp_perm *slp_perm) {
+	return 0;
 }
