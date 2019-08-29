@@ -79,5 +79,5 @@ void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu);
 bool kvm_vmx_task_switch_need_stop(struct kvm_vcpu *vcpu, u64 cr3_out, u64 cr3_in);
 
 int vmx_vmi_feature_control(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature);
-
+int vmx_vmi_slp_update(struct kvm_vcpu *vcpu, struct kvm_vmi_slp_perm *slp_perm);
 #endif

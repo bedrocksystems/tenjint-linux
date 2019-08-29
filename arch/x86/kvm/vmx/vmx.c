@@ -8253,12 +8253,10 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.nested_enable_evmcs = NULL,
 	.nested_get_evmcs_version = NULL,
 	.need_emulation_on_page_fault = vmx_need_emulation_on_page_fault,
-<<<<<<< HEAD
 	.apic_init_signal_blocked = vmx_apic_init_signal_blocked,
-=======
 
 	.vmi_feature_control = vmx_vmi_feature_control,
->>>>>>> Rebase to v5.2 and general prep
+	.vmi_slp_update = vmx_vmi_slp_update,
 };
 
 void vmx_vmi_update_execution_controls(u32 exec_control)

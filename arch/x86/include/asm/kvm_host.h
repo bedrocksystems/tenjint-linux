@@ -1245,6 +1245,7 @@ struct kvm_x86_ops {
 	bool (*apic_init_signal_blocked)(struct kvm_vcpu *vcpu);
 	int (*enable_direct_tlbflush)(struct kvm_vcpu *vcpu);
 	int (*vmi_feature_control)(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature);
+	int (*vmi_slp_update)(struct kvm_vcpu *vcpu, struct kvm_vmi_slp_perm *slp_perm);
 };
 
 struct kvm_arch_async_pf {
