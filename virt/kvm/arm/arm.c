@@ -1196,7 +1196,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 
 		r = -EFAULT;
 		if (copy_from_user(&feature, argp, sizeof(feature)))
-		    goto out;
+		    break;
 
 		r = kvm_arch_vmi_feature_update(vcpu, &feature);
 		break;
@@ -1206,7 +1206,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 
 		r = -EFAULT;
 		if (copy_from_user(&slp_perm, argp, sizeof(slp_perm)))
-		    goto out;
+		    break;
 
 		r = kvm_arch_vmi_slp_update(vcpu, &slp_perm);
 		break;
