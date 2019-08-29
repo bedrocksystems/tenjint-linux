@@ -1215,6 +1215,7 @@ struct kvm_x86_ops {
 	bool (*need_emulation_on_page_fault)(struct kvm_vcpu *vcpu);
 
 	int (*vmi_feature_control)(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature);
+	int (*vmi_slp_update)(struct kvm_vcpu *vcpu, struct kvm_vmi_slp_perm *slp_perm);
 };
 
 struct kvm_arch_async_pf {

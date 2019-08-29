@@ -4325,6 +4325,11 @@ int kvm_arch_vmi_feature_update(struct kvm_vcpu *vcpu,
 	return kvm_x86_ops->vmi_feature_control(vcpu, feature);
 }
 
+int kvm_arch_vmi_slp_update(struct kvm_vcpu *vcpu,
+                            struct kvm_vmi_slp_perm *slp_perm) {
+	return kvm_x86_ops->vmi_slp_update(vcpu, slp_perm);
+}
+
 static int kvm_vm_ioctl_set_tss_addr(struct kvm *kvm, unsigned long addr)
 {
 	int ret;
