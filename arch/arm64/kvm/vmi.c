@@ -129,7 +129,7 @@ static int kvm_arm64_feature_control_slp(struct kvm_vcpu *vcpu,
 			return 0;
 		}
 
-		for (gfn = feature->gfn; gfn < (gfn + feature->num_pages); gfn++) {
+		for (gfn = feature->gfn; gfn < (feature->gfn + feature->num_pages); gfn++) {
 			new_entry = true;
 			hash_for_each_possible(vcpu->arch.vmi_slp_ht, i, h, gfn) {
 				if (i->gfn == gfn) {
@@ -166,7 +166,7 @@ static int kvm_arm64_feature_control_slp(struct kvm_vcpu *vcpu,
 			}
 		}
 		else {
-			for (gfn = feature->gfn; gfn < (gfn + feature->num_pages); gfn++) {
+			for (gfn = feature->gfn; gfn < (feature->gfn + feature->num_pages); gfn++) {
 				hash_for_each_possible_safe(vcpu->arch.vmi_slp_ht, i, tmp, h, gfn) {
 					if (i->gfn == gfn) {
 						if (i->count > 0)
