@@ -217,6 +217,16 @@ int vmx_vmi_feature_control(struct kvm_vcpu *vcpu, union kvm_vmi_feature *featur
 	return rv;
 }
 
-int vmx_vmi_slp_update(struct kvm_vcpu *vcpu, struct kvm_vmi_slp_perm *slp_perm) {
+int vmx_vmi_slp_update(struct kvm_vcpu *vcpu,
+                       struct kvm_vmi_slp_perm *slp_perm) {
+	int rv = 0;
+	u64 gfn;
+
+	for (gfn = slp_perm->gfn; gfn < (slp_perm->gfn + slp_perm->num_pages); gfn++) {
+		rv = mmu_update_spte_permissions(vcpu, gfn << PAGE_SHIFT,
+		                                 slp_perm->perm);
+		if (rv < 0)
+			break;
+	}
 	return 0;
 }

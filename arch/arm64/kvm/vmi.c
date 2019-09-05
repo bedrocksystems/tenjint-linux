@@ -218,7 +218,7 @@ int kvm_arch_vmi_slp_update(struct kvm_vcpu *vcpu,
 	int rv = 0;
 	u64 gfn;
 
-	for (gfn=slp_perm->gfn; gfn < (gfn + slp_perm->num_pages); gfn++) {
+	for (gfn=slp_perm->gfn; gfn < (slp_perm->gfn + slp_perm->num_pages); gfn++) {
 		rv = mmu_update_spte_permissions(vcpu, gfn << PAGE_SHIFT,
 		                                 slp_perm->perm);
 		if (rv < 0)
