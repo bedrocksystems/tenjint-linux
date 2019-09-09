@@ -37,7 +37,14 @@ void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu) {
 
 }
 void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu) {
+	int i;
+	struct hlist_node *tmp;
+	struct kvm_vmi_slp_node *slp_node;
 
+	hash_for_each_safe(vcpu->arch.vmi_slp_ht, i, tmp, slp_node, h) {
+		hash_del(&(slp_node->h));
+		kfree(slp_node);
+	}
 }
 
 bool kvm_arm64_task_switch_need_stop(struct kvm_vcpu *vcpu, u8 reg,
