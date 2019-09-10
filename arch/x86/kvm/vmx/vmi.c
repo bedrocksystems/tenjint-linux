@@ -39,7 +39,8 @@ struct kvm_vmi_slp_node {
 
 void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu)
 {
-	hash_init(vcpu->vmi_dtb_ht);
+	hash_init(vcpu->arch.vmi_dtb_ht);
+	hash_init(vcpu->arch.vmi_slp_ht);
 }
 
 void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu)
@@ -49,7 +50,7 @@ void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu)
 	struct vmi_dtb_entry *dtb_entry;
 	struct kvm_vmi_slp_node *slp_node;
 
-	hash_for_each_safe (vcpu->vmi_dtb_ht, i, tmp, dtb_entry, list) {
+	hash_for_each_safe (vcpu->arch.vmi_dtb_ht, i, tmp, dtb_entry, list) {
 		hash_del(&dtb_entry->list);
 		kfree(dtb_entry);
 	}
@@ -64,7 +65,7 @@ static struct vmi_dtb_entry* kvm_vmi_dtb_get_entry(struct kvm_vcpu *vcpu, u64 dt
 {
 	struct vmi_dtb_entry *entry;
 
-	hash_for_each_possible(vcpu->vmi_dtb_ht,entry,list,dtb){
+	hash_for_each_possible(vcpu->arch.vmi_dtb_ht,entry,list,dtb){
 		if(entry->dtb == dtb)
 			return entry;
 	}
@@ -76,7 +77,7 @@ static void kvm_vmi_dtb_rm_entry(struct kvm_vcpu *vcpu, u64 dtb)
 	struct hlist_node *tmp;
 	struct vmi_dtb_entry *entry;
 
-	hash_for_each_possible_safe(vcpu->vmi_dtb_ht,entry,tmp,list,dtb){
+	hash_for_each_possible_safe(vcpu->arch.vmi_dtb_ht,entry,tmp,list,dtb){
 		if(entry->dtb == dtb){
 			hash_del(&entry->list);
 			kfree(entry);
@@ -105,7 +106,7 @@ static void kvm_vmi_dtb_add_update_entry(struct kvm_vcpu *vcpu, u64 dtb, bool in
 	entry->out = out;
 
 	if(!_entry){
-		hash_add(vcpu->vmi_dtb_ht,&entry->list,dtb);
+		hash_add(vcpu->arch.vmi_dtb_ht,&entry->list,dtb);
 	}
 }
 
@@ -173,7 +174,7 @@ int vmx_vmi_feature_control_task_switch(struct kvm_vcpu *vcpu, union kvm_vmi_fea
 	struct kvm_vmi_feature_task_switch *ts = (struct kvm_vmi_feature_task_switch*) feature;
 
 	if(ts->enable) {
-		if(hash_empty(vcpu->vmi_dtb_ht)){
+		if(hash_empty(vcpu->arch.vmi_dtb_ht)){
 			vmx_vmi_enable_task_switch_trapping(vcpu);
 			vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_TRAP_TASK_SWITCH] = 1;
 		}
@@ -183,7 +184,7 @@ int vmx_vmi_feature_control_task_switch(struct kvm_vcpu *vcpu, union kvm_vmi_fea
 	else {
 		kvm_vmi_dtb_rm_entry(vcpu,ts->dtb);
 
-		if(hash_empty(vcpu->vmi_dtb_ht)){
+		if(hash_empty(vcpu->arch.vmi_dtb_ht)){
 			vmx_vmi_disable_task_switch_trapping(vcpu);
 			vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_TRAP_TASK_SWITCH] = 0;
 		}
