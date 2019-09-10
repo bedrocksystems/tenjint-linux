@@ -34,7 +34,7 @@ struct kvm_vmi_slp_node {
 };
 
 void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu) {
-
+	hash_init(vcpu->arch.vmi_slp_ht);
 }
 void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu) {
 	int i;
