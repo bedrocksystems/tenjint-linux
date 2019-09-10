@@ -1669,8 +1669,8 @@ static u64 get_vmi_perm(struct kvm_vcpu *vcpu, bool writable, bool read_fault,
 	if (writable || read_fault) {
 		perm |= (KVM_VMI_SLP_R | KVM_VMI_SLP_W);
 		if (vcpu != NULL) {
-			unsigned long pc_base = *vcpu_pc(vcpu) << PAGE_SHIFT;
-			unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) << PAGE_SHIFT;
+			unsigned long pc_base = *vcpu_pc(vcpu) >> PAGE_SHIFT;
+			unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) >> PAGE_SHIFT;
 			if (pc_base == fa_base)
 				perm |= KVM_VMI_SLP_X;
 		}
