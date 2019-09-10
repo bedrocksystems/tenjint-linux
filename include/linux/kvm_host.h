@@ -331,7 +331,6 @@ struct kvm_vcpu {
 
 	//vmi
 	u8 vmi_feature_enabled[KVM_VMI_FEATURE_MAX];
-	DECLARE_HASHTABLE(vmi_dtb_ht,7);
 };
 
 static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)
