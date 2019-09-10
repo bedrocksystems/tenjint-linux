@@ -31,6 +31,12 @@ struct vmi_dtb_entry{
 	bool out;
 };
 
+struct kvm_vmi_slp_node {
+	struct hlist_node h;
+	u32 count;
+	u64 gfn;
+};
+
 void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	hash_init(vcpu->vmi_dtb_ht);
@@ -41,10 +47,16 @@ void kvm_vmi_vcpu_uninit(struct kvm_vcpu *vcpu)
 	int i;
 	struct hlist_node *tmp;
 	struct vmi_dtb_entry *dtb_entry;
+	struct kvm_vmi_slp_node *slp_node;
 
 	hash_for_each_safe (vcpu->vmi_dtb_ht, i, tmp, dtb_entry, list) {
 		hash_del(&dtb_entry->list);
 		kfree(dtb_entry);
+	}
+
+	hash_for_each_safe(vcpu->arch.vmi_slp_ht, i, tmp, slp_node, h) {
+		hash_del(&(slp_node->h));
+		kfree(slp_node);
 	}
 }
 
@@ -115,6 +127,29 @@ bool kvm_vmx_task_switch_need_stop(struct kvm_vcpu *vcpu, u64 cr3_out, u64 cr3_i
 	entry = kvm_vmi_dtb_get_entry(vcpu,cr3_in);
 	if(entry && entry->in)
 		return true;
+
+	return false;
+}
+
+bool vmx_vmi_slp_need_stop(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
+                             bool write_fault, bool exec_fault) {
+	struct kvm_vmi_slp_node *i;
+	u64 gfn = gpa >> PAGE_SHIFT;
+
+	if (read_fault && vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX]) {
+		return true;
+	}
+	else if (write_fault && vcpu->arch.vmi_slp_global[KVM_VMI_SLP_W_INDEX]) {
+		return true;
+	}
+	else if (exec_fault && vcpu->arch.vmi_slp_global[KVM_VMI_SLP_X_INDEX]) {
+		return true;
+	}
+
+	hash_for_each_possible(vcpu->arch.vmi_slp_ht, i, h, gfn) {
+		if (i->gfn == gfn)
+			return true;
+	}
 
 	return false;
 }
@@ -195,6 +230,98 @@ int vmx_vmi_feature_control_mtf(struct kvm_vcpu *vcpu, union kvm_vmi_feature *fe
 	return 0;
 }
 
+static int vmx_vmi_feature_control_slp(struct kvm_vcpu *vcpu,
+                                       struct kvm_vmi_feature_slp *feature) {
+	u64 gfn;
+	bool new_entry;
+	struct kvm_vmi_slp_node *i;
+	struct hlist_node *tmp;
+
+	if (!(feature->violation |
+	        (KVM_VMI_SLP_R | KVM_VMI_SLP_W | KVM_VMI_SLP_X))){
+		return -EFAULT;
+	}
+
+	if (feature->enable){
+		if (feature->global_req){
+			if (feature->violation | KVM_VMI_SLP_R) {
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX]++;
+			}
+			if (feature->violation | KVM_VMI_SLP_W) {
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_W_INDEX]++;
+			}
+			if (feature->violation | KVM_VMI_SLP_X) {
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_X_INDEX]++;
+			}
+			if (!vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]) {
+				vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] = 1;
+				kvm_mmu_zap_all(vcpu->kvm);
+			}
+			return 0;
+		}
+
+		for (gfn = feature->gfn; gfn < (feature->gfn + feature->num_pages); gfn++) {
+			new_entry = true;
+			hash_for_each_possible(vcpu->arch.vmi_slp_ht, i, h, gfn) {
+				if (i->gfn == gfn) {
+					i->count++;
+					new_entry = false;
+					break;
+				}
+			}
+			if (new_entry) {
+				i = kzalloc(sizeof(struct kvm_vmi_slp_node), GFP_KERNEL);
+				i->count = 1;
+				i->gfn = gfn;
+				hash_add(vcpu->arch.vmi_slp_ht, &(i->h), gfn);
+			}
+			if (!vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]) {
+				vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] = 1;
+				kvm_mmu_zap_all(vcpu->kvm);
+			}
+		}
+	}
+	else {
+		if (feature->global_req){
+			if ((feature->violation | KVM_VMI_SLP_R) &&
+			        (vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX] > 0)) {
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX]--;
+			}
+			if ((feature->violation | KVM_VMI_SLP_W) &&
+			        (vcpu->arch.vmi_slp_global[KVM_VMI_SLP_W_INDEX] > 0)) {
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_W_INDEX]--;
+			}
+			if ((feature->violation | KVM_VMI_SLP_X) &&
+			        (vcpu->arch.vmi_slp_global[KVM_VMI_SLP_X_INDEX] > 0)){
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_X_INDEX]--;
+			}
+		}
+		else {
+			for (gfn = feature->gfn; gfn < (feature->gfn + feature->num_pages); gfn++) {
+				hash_for_each_possible_safe(vcpu->arch.vmi_slp_ht, i, tmp, h, gfn) {
+					if (i->gfn == gfn) {
+						if (i->count > 0)
+							i->count--;
+						if (i->count == 0) {
+							hash_del(&(i->h));
+							kfree(i);
+						}
+						break;
+					}
+				}
+			}
+		}
+		if (vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX] == 0 &&
+		        vcpu->arch.vmi_slp_global[KVM_VMI_SLP_W_INDEX] == 0 &&
+				vcpu->arch.vmi_slp_global[KVM_VMI_SLP_X_INDEX] == 0 &&
+				hash_empty(vcpu->arch.vmi_slp_ht)) {
+			vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] = 0;
+		}
+	}
+
+	return 0;
+}
+
 int vmx_vmi_feature_control(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature)
 {
 	int rv = 0;
@@ -208,6 +335,10 @@ int vmx_vmi_feature_control(struct kvm_vcpu *vcpu, union kvm_vmi_feature *featur
 		break;
 	case KVM_VMI_FEATURE_MTF:
 		rv = vmx_vmi_feature_control_mtf(vcpu,feature);
+		break;
+	case KVM_VMI_FEATURE_SLP:
+		rv = vmx_vmi_feature_control_slp(vcpu,
+		                        (struct kvm_vmi_feature_slp*)feature);
 		break;
 	default:
 		kvm_vmi_warning("unknown feature id %d", feature->feature);

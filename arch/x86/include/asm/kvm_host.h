@@ -813,6 +813,8 @@ struct kvm_vcpu_arch {
 
 	u64 vmi_lbr_select;
 	struct kvm_vmi_lbr_info vmi_lbr;
+	u32 vmi_slp_global[3];
+	DECLARE_HASHTABLE(vmi_slp_ht,7);
 };
 
 struct kvm_lpage_info {

@@ -6236,6 +6236,7 @@ restart:
 	kvm_mmu_commit_zap_page(kvm, &invalid_list);
 	spin_unlock(&kvm->mmu_lock);
 }
+EXPORT_SYMBOL_GPL(kvm_mmu_zap_all);
 
 void kvm_mmu_invalidate_mmio_sptes(struct kvm *kvm, u64 gen)
 {
