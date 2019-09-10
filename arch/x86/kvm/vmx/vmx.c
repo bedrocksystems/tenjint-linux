@@ -5175,6 +5175,12 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 				slp->violation |= (error_code & PFERR_FETCH_MASK) ? KVM_VMI_SLP_X : 0;
 				slp->gva = gva;
 				slp->gpa = gpa;
+				if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
+					slp->rwx = (__u8)((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT));
+				}
+				else {
+					slp->rwx = 0;
+				}
 				vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
 				return 0;
 			}
