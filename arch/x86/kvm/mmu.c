@@ -6005,6 +6005,7 @@ void kvm_mmu_zap_all(struct kvm *kvm)
 {
 	return __kvm_mmu_zap_all(kvm, false);
 }
+EXPORT_SYMBOL_GPL(kvm_mmu_zap_all);
 
 void kvm_mmu_invalidate_mmio_sptes(struct kvm *kvm, u64 gen)
 {
