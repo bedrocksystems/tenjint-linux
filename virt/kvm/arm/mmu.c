@@ -1876,6 +1876,13 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					slp->violation |= write_fault ? KVM_VMI_SLP_W : 0;
 					slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
 					slp->gva = kvm_vcpu_get_hfar(vcpu);
+					if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
+						slp->rwx = (__u8)((slp->gva >> PAGE_SHIFT) ==
+						                  (*vcpu_pc(vcpu) >> PAGE_SHIFT))
+					}
+					else {
+						slp->rwx = 0;
+					}
 					/*
 					* The IPA is reported as [MAX:12], so we need to
 					* complement it with the bottom 12 bits from the
