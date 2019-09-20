@@ -1878,7 +1878,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					slp->gva = kvm_vcpu_get_hfar(vcpu);
 					if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
 						slp->rwx = (__u8)((slp->gva >> PAGE_SHIFT) ==
-						                  (*vcpu_pc(vcpu) >> PAGE_SHIFT))
+						                  (*vcpu_pc(vcpu) >> PAGE_SHIFT));
 					}
 					else {
 						slp->rwx = 0;
