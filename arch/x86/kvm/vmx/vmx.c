@@ -6654,8 +6654,8 @@ static void store_atomic_switch_lbr_msrs(struct kvm_vcpu *vcpu,
 		to = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_to + i);
 
 		if (from != 0 || to != 0) {
-			vcpu->arch.vmi_lbr.from[i] = from;
-			vcpu->arch.vmi_lbr.to[i] = to;
+			vcpu->arch.vmi_lbr.lbr_from[i] = from;
+			vcpu->arch.vmi_lbr.lbr_to[i] = to;
 		}
 	}
 
