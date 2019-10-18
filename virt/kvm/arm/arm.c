@@ -782,6 +782,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 * Back from guest
 		 *************************************************************/
 
+		vcpu->run->exit_time = kvm_arm_timer_get_reg(vcpu, KVM_REG_ARM_TIMER_CNT);
+
 		kvm_arm_clear_debug(vcpu);
 
 		/*
