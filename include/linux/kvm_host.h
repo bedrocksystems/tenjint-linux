@@ -512,6 +512,9 @@ struct kvm {
 	struct srcu_struct srcu;
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
+
+	// vmi
+	spinlock_t vmi_timer_lock;
 };
 
 #define kvm_err(fmt, ...) \
