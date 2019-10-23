@@ -534,7 +534,7 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
-	mutex_lock(&kvm->lock);
+	spin_lock(&kvm->vmi_timer_lock);
 	if (vcpu->run->vmi_hide_time) {
 		cntvoff = kvm_phys_timer_read() - vcpu->run->vmi_hide_time;
 		kvm_for_each_vcpu(i, tmp, kvm) {
@@ -542,7 +542,7 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 			tmp->run->vmi_hide_time = 0;
 		}
 	}
-	mutex_unlock(&kvm->lock);
+	spin_unlock(&kvm->vmi_timer_lock);
 
 	if (static_branch_likely(&has_gic_active_state)) {
 		kvm_timer_vcpu_load_gic(map.direct_vtimer);
