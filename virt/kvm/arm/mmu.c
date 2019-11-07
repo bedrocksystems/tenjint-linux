@@ -1896,7 +1896,30 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 				else {
 					perm = get_vmi_perm(vcpu, write_fault, read_fault,
 					                    exec_fault);
-					kvm_set_s2pte(&new_pte, perm);
+					if (perm == (KVM_VMI_SLP_R | KVM_VMI_SLP_W | KVM_VMI_SLP_X)) {
+						printk(KERN_WARNING "\t%s: cpu%d: RWX case\n", __func__,
+						       vcpu->vcpu_id);
+						slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
+						slp->type = KVM_VMI_EVENT_SLP;
+						slp->cpu_num = (__u32)vcpu->vcpu_id;
+						slp->violation = read_fault ? KVM_VMI_SLP_R : 0;
+						slp->violation |= write_fault ? KVM_VMI_SLP_W : 0;
+						slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
+						slp->gva = kvm_vcpu_get_hfar(vcpu);
+						slp->rwx = 1;
+						/*
+						* The IPA is reported as [MAX:12], so we need to
+						* complement it with the bottom 12 bits from the
+						* faulting VA. This is always 12 bits, irrespective
+						* of the page size.
+						*/
+						slp->gpa = fault_ipa | (slp->gva & ((1 << 12) - 1));
+						vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+						vmi_need_stop = true;
+					}
+					else {
+						kvm_set_s2pte(&new_pte, perm);
+					}
 				}
 			}
 		}

@@ -5259,10 +5259,17 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 				// if rwx case
 				if ((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT)) {
 					printk(KERN_WARNING "\t%s: cpu%d: RWX case\n", __func__, vcpu->vcpu_id);
-					if (mmu_update_spte_permissions(vcpu, gpa,
-							KVM_VMI_SLP_R | KVM_VMI_SLP_W | KVM_VMI_SLP_X) == -1) {
-						return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
-					}
+					slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
+					slp->type = KVM_VMI_EVENT_SLP;
+					slp->cpu_num = (__u32)vcpu->vcpu_id;
+					slp->violation = (error_code & PFERR_USER_MASK) ? KVM_VMI_SLP_R : 0;
+					slp->violation |= (error_code & PFERR_WRITE_MASK) ? KVM_VMI_SLP_W : 0;
+					slp->violation |= (error_code & PFERR_FETCH_MASK) ? KVM_VMI_SLP_X : 0;
+					slp->gva = gva;
+					slp->gpa = gpa;
+					slp->rwx = 1;
+					vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+					return 0;
 				}
 				else {
 					if (mmu_update_spte_permissions(vcpu, gpa,
