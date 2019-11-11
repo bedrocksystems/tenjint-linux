@@ -280,6 +280,11 @@ static inline int kvm_vcpu_get_condition(const struct kvm_vcpu *vcpu)
 	return -1;
 }
 
+static inline bool kvm_vcpu_hfar_isvalid(const struct kvm_vcpu *vcpu)
+{
+	return !(kvm_vcpu_get_hsr(vcpu) & ESR_ELx_FnV);
+}
+
 static inline unsigned long kvm_vcpu_get_hfar(const struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.fault.far_el2;

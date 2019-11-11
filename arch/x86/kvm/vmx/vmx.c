@@ -5237,7 +5237,10 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 			return r;
 		}
 		else {
-			gva = vmcs_readl(GUEST_LINEAR_ADDRESS);
+			if (error_code & PFERR_GUEST_FINAL_MASK)
+				gva = vmcs_readl(GUEST_LINEAR_ADDRESS);
+			else
+				gva = (u64)-1;
 			rip = kvm_rip_read(vcpu);
 			if (vmx_vmi_slp_need_stop(vcpu, gpa, (error_code & PFERR_USER_MASK),
 			                          (error_code & PFERR_WRITE_MASK),
@@ -5250,7 +5253,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 				slp->violation |= (error_code & PFERR_FETCH_MASK) ? KVM_VMI_SLP_X : 0;
 				slp->gva = gva;
 				slp->gpa = gpa;
-				if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
+				if ((gva != (u64)-1) &&
+				        (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W))) {
 					slp->rwx = (__u8)((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT));
 					if (slp->rwx)
 						printk(KERN_WARNING "\t%s: cpu%d: need stop RWX case\n", __func__, vcpu->vcpu_id);
@@ -5264,7 +5268,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 			// read or write
 			else if (error_code & (PFERR_USER_MASK | PFERR_WRITE_MASK)) {
 				// if rwx case
-				if ((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT)) {
+				if ((gva != (u64)-1) &&
+				        ((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT))) {
 					printk(KERN_WARNING "\t%s: cpu%d: RWX case\n", __func__, vcpu->vcpu_id);
 					slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
 					slp->type = KVM_VMI_EVENT_SLP;
@@ -5279,7 +5284,10 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 					return 0;
 				}
 				else {
-					if (vmx_vmi_slp_need_stop(vcpu, gpa, false, true, false)) {
+					if ((error_code & (PFERR_USER_MASK | PFERR_WRITE_MASK)) == (PFERR_USER_MASK | PFERR_WRITE_MASK)){
+						perm = (KVM_VMI_SLP_R | KVM_VMI_SLP_W);
+					}
+					else if (vmx_vmi_slp_need_stop(vcpu, gpa, false, true, false)) {
 						perm = KVM_VMI_SLP_R;
 					}
 					else {
