@@ -1853,11 +1853,20 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 		ret = stage2_set_pmd_huge(kvm, memcache, fault_ipa, &new_pmd);
 	} else {
+		u64 gva, gpa;
 		pte_t new_pte = kvm_pfn_pte(pfn, mem_type);
 
 		if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
 		        !kvm_is_device_pfn(pfn)) {
 			if (fault_status == FSC_PERM) {
+				gva = kvm_vcpu_get_hfar(vcpu);
+				/*
+				* The IPA is reported as [MAX:12], so we need to
+				* complement it with the bottom 12 bits from the
+				* faulting VA. This is always 12 bits, irrespective
+				* of the page size.
+				*/
+				gpa = fault_ipa | (gva & ((1 << 12) - 1));
 				if (kvm_arm64_slp_need_stop(vcpu, fault_ipa, read_fault,
 				                            write_fault, exec_fault)) {
 					slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
@@ -1866,21 +1875,15 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					slp->violation = read_fault ? KVM_VMI_SLP_R : 0;
 					slp->violation |= write_fault ? KVM_VMI_SLP_W : 0;
 					slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
-					slp->gva = kvm_vcpu_get_hfar(vcpu);
+					slp->gva = gva;
+					slp->gpa = gpa;
 					if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
-						slp->rwx = (__u8)((slp->gva >> PAGE_SHIFT) ==
+						slp->rwx = (__u8)((gva >> PAGE_SHIFT) ==
 						                  (*vcpu_pc(vcpu) >> PAGE_SHIFT));
 					}
 					else {
 						slp->rwx = 0;
 					}
-					/*
-					* The IPA is reported as [MAX:12], so we need to
-					* complement it with the bottom 12 bits from the
-					* faulting VA. This is always 12 bits, irrespective
-					* of the page size.
-					*/
-					slp->gpa = fault_ipa | (slp->gva & ((1 << 12) - 1));
 					vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
 					vmi_need_stop = true;
 				}
@@ -1896,21 +1899,28 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 						slp->violation = read_fault ? KVM_VMI_SLP_R : 0;
 						slp->violation |= write_fault ? KVM_VMI_SLP_W : 0;
 						slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
-						slp->gva = kvm_vcpu_get_hfar(vcpu);
+						slp->gva = gva;
+						slp->gpa = gpa;
 						slp->rwx = 1;
-						/*
-						* The IPA is reported as [MAX:12], so we need to
-						* complement it with the bottom 12 bits from the
-						* faulting VA. This is always 12 bits, irrespective
-						* of the page size.
-						*/
-						slp->gpa = fault_ipa | (slp->gva & ((1 << 12) - 1));
 						vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
 						vmi_need_stop = true;
 					}
 					else {
+						if ((perm & KVM_VMI_SLP_W) &&
+						        kvm_arm64_slp_need_stop(vcpu, gpa, false, true, false)) {
+							perm = KVM_VMI_SLP_R;
+						}
+						else if ((perm & KVM_VMI_SLP_R) &&
+						        kvm_arm64_slp_need_stop(vcpu, gpa, true, false, false)) {
+							perm = KVM_VMI_SLP_X;
+						}
 						kvm_set_s2pte(&new_pte, perm);
 					}
+				}
+			}
+			else {
+				if (kvm_arm64_slp_need_stop(vcpu, fault_ipa, true, true, false)) {
+					kvm_set_s2pte(&new_pte, KVM_VMI_SLP_X);
 				}
 			}
 		}

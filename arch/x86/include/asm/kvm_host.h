@@ -791,6 +791,7 @@ struct kvm_vcpu_arch {
 	/* AMD MSRC001_0015 Hardware Configuration */
 	u64 msr_hwcr;
 
+	bool vmi_x_only;
 	u64 vmi_lbr_select;
 	struct kvm_vmi_lbr_info vmi_lbr;
 	u32 vmi_slp_global[3];

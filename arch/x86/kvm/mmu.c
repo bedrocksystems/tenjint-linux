@@ -2438,7 +2438,9 @@ static struct kvm_mmu_page *kvm_mmu_get_page(struct kvm_vcpu *vcpu,
 		role.gpte_is_8_bytes = true;
 	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
 	        level == PT_PAGE_TABLE_LEVEL) {
-		if (access & ACC_WRITE_MASK)
+		if (vcpu->arch.vmi_x_only)
+			access = ACC_EXEC_MASK;
+		else if (access & ACC_WRITE_MASK)
 			access &= ~ACC_EXEC_MASK;
 	}
 	role.access = access;
@@ -2582,9 +2584,16 @@ static void link_shadow_page(struct kvm_vcpu *vcpu, u64 *sptep,
 	BUILD_BUG_ON(VMX_EPT_WRITABLE_MASK != PT_WRITABLE_MASK);
 
 	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] && is_last_spte(*sptep, level)) {
-		spte = (__pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
-				shadow_user_mask | shadow_me_mask | shadow_nx_mask) &
-				~shadow_x_mask;
+		if (vcpu->arch.vmi_x_only) {
+			spte = (((__pa(sp->spt) | shadow_present_mask | shadow_me_mask |
+					shadow_x_mask) & ~shadow_nx_mask) & ~PT_WRITABLE_MASK) &
+					~shadow_user_mask;
+		}
+		else {
+			spte = (__pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
+					shadow_user_mask | shadow_me_mask | shadow_nx_mask) &
+					~shadow_x_mask;
+		}
 	}
 	else {
 		spte = __pa(sp->spt) | shadow_present_mask | PT_WRITABLE_MASK |
@@ -3006,7 +3015,10 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 
 	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
 	        !is_shadow_present_pte(*sptep)) {
-		pte_access &= ~ACC_EXEC_MASK;
+		if (vcpu->arch.vmi_x_only)
+			pte_access = ACC_EXEC_MASK;
+		else
+			pte_access &= ~ACC_EXEC_MASK;
 	}
 
 	sp = page_header(__pa(sptep));
@@ -3261,7 +3273,10 @@ static int __direct_map(struct kvm_vcpu *vcpu, int write, int map_writable,
 	for_each_shadow_entry(vcpu, (u64)gfn << PAGE_SHIFT, iterator) {
 		if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
 		        is_last_spte(*iterator.sptep, iterator.level)) {
-			pte_access = (ACC_WRITE_MASK | ACC_USER_MASK);
+			if (vcpu->arch.vmi_x_only)
+				pte_access = ACC_EXEC_MASK;
+			else
+				pte_access = (ACC_WRITE_MASK | ACC_USER_MASK);
 		}
 		else {
 			pte_access = ACC_ALL;
@@ -3519,8 +3534,14 @@ static bool fast_page_fault(struct kvm_vcpu *vcpu, gva_t gva, int level,
 		{
 			new_spte |= PT_WRITABLE_MASK;
 			if(vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]){
-				new_spte |= shadow_nx_mask;
-				new_spte &= ~shadow_x_mask;
+				if (vcpu->arch.vmi_x_only) {
+					new_spte = (((new_spte | shadow_x_mask) & ~shadow_nx_mask) &
+					            ~PT_WRITABLE_MASK) & ~shadow_user_mask;
+				}
+				else {
+					new_spte |= shadow_nx_mask;
+					new_spte &= ~shadow_x_mask;
+				}
 			}
 
 			/*
