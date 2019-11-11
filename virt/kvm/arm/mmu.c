@@ -1669,10 +1669,12 @@ static u64 get_vmi_perm(struct kvm_vcpu *vcpu, bool writable, bool read_fault,
 	if (writable || read_fault) {
 		perm |= (KVM_VMI_SLP_R | KVM_VMI_SLP_W);
 		if (vcpu != NULL) {
-			unsigned long pc_base = *vcpu_pc(vcpu) >> PAGE_SHIFT;
-			unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) >> PAGE_SHIFT;
-			if (pc_base == fa_base)
-				perm |= KVM_VMI_SLP_X;
+			if (kvm_vcpu_hfar_isvalid(vcpu)) {
+				unsigned long pc_base = *vcpu_pc(vcpu) >> PAGE_SHIFT;
+				unsigned long fa_base = kvm_vcpu_get_hfar(vcpu) >> PAGE_SHIFT;
+				if (pc_base == fa_base)
+					perm |= KVM_VMI_SLP_X;
+			}
 		}
 	}
 	if (needs_exec) {
@@ -1859,14 +1861,20 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP] &&
 		        !kvm_is_device_pfn(pfn)) {
 			if (fault_status == FSC_PERM) {
-				gva = kvm_vcpu_get_hfar(vcpu);
-				/*
-				* The IPA is reported as [MAX:12], so we need to
-				* complement it with the bottom 12 bits from the
-				* faulting VA. This is always 12 bits, irrespective
-				* of the page size.
-				*/
-				gpa = fault_ipa | (gva & ((1 << 12) - 1));
+				if (kvm_vcpu_hfar_isvalid(vcpu)) {
+					gva = kvm_vcpu_get_hfar(vcpu);
+					/*
+					* The IPA is reported as [MAX:12], so we need to
+					* complement it with the bottom 12 bits from the
+					* faulting VA. This is always 12 bits, irrespective
+					* of the page size.
+					*/
+					gpa = fault_ipa | (gva & ((1 << 12) - 1));
+				}
+				else {
+					gva = (u64)-1;
+					gpa = fault_ipa;
+				}
 				if (kvm_arm64_slp_need_stop(vcpu, fault_ipa, read_fault,
 				                            write_fault, exec_fault)) {
 					slp = (struct kvm_vmi_event_slp *)&vcpu->run->vmi_event;
@@ -1877,7 +1885,8 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					slp->violation |= exec_fault ? KVM_VMI_SLP_X : 0;
 					slp->gva = gva;
 					slp->gpa = gpa;
-					if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
+					if ((gva != (u64)-1) &&
+					        (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W))) {
 						slp->rwx = (__u8)((gva >> PAGE_SHIFT) ==
 						                  (*vcpu_pc(vcpu) >> PAGE_SHIFT));
 					}
