@@ -5187,8 +5187,9 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	unsigned long exit_qualification;
 	gpa_t gpa;
 	gva_t gva, rip;
-	u64 error_code;
+	u64 error_code, perm;
 	struct kvm_vmi_event_slp *slp;
+	int r;
 
 	exit_qualification = vmcs_readl(EXIT_QUALIFICATION);
 
@@ -5227,13 +5228,17 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	vcpu->arch.exit_qualification = exit_qualification;
 
 	if (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]){
-		gva = vmcs_readl(GUEST_LINEAR_ADDRESS);
-		rip = kvm_rip_read(vcpu);
 		// not present
 		if (!(error_code & PFERR_PRESENT_MASK)) {
-			return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+			if (vmx_vmi_slp_need_stop(vcpu, gpa, true, true, false))
+				vcpu->arch.vmi_x_only = true;
+			r = kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
+			vcpu->arch.vmi_x_only = false;
+			return r;
 		}
 		else {
+			gva = vmcs_readl(GUEST_LINEAR_ADDRESS);
+			rip = kvm_rip_read(vcpu);
 			if (vmx_vmi_slp_need_stop(vcpu, gpa, (error_code & PFERR_USER_MASK),
 			                          (error_code & PFERR_WRITE_MASK),
 									  (error_code & PFERR_FETCH_MASK))) {
@@ -5247,6 +5252,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 				slp->gpa = gpa;
 				if (slp->violation & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) {
 					slp->rwx = (__u8)((gva >> PAGE_SHIFT) == (rip >> PAGE_SHIFT));
+					if (slp->rwx)
+						printk(KERN_WARNING "\t%s: cpu%d: need stop RWX case\n", __func__, vcpu->vcpu_id);
 				}
 				else {
 					slp->rwx = 0;
@@ -5272,16 +5279,27 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 					return 0;
 				}
 				else {
-					if (mmu_update_spte_permissions(vcpu, gpa,
-							(KVM_VMI_SLP_R | KVM_VMI_SLP_W)) == -1) {
+					if (vmx_vmi_slp_need_stop(vcpu, gpa, false, true, false)) {
+						perm = KVM_VMI_SLP_R;
+					}
+					else {
+						perm = (KVM_VMI_SLP_R | KVM_VMI_SLP_W);
+					}
+					if (mmu_update_spte_permissions(vcpu, gpa, perm) == -1) {
 						return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 					}
 				}
 			}
 			// execute
 			else if (error_code & PFERR_FETCH_MASK) {
-				if (mmu_update_spte_permissions(vcpu, gpa,
-						(KVM_VMI_SLP_R | KVM_VMI_SLP_X)) == -1) {
+				if (vmx_vmi_slp_need_stop(vcpu, gpa, true, false, false)) {
+					perm = KVM_VMI_SLP_X;
+				}
+				else {
+					perm = (KVM_VMI_SLP_R | KVM_VMI_SLP_X);
+				}
+
+				if (mmu_update_spte_permissions(vcpu, gpa, perm) == -1) {
 					return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 				}
 			}
