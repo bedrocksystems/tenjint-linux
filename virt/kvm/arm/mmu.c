@@ -1609,6 +1609,10 @@ static bool fault_supports_stage2_huge_mapping(struct kvm_memory_slot *memslot,
 					       unsigned long hva,
 					       unsigned long map_size)
 {
+	// TODO: properly check a vm global variable and only return false if vmi
+	//       is enabled.
+	return false;
+/*
 	gpa_t gpa_start;
 	hva_t uaddr_start, uaddr_end;
 	size_t size;
@@ -1642,7 +1646,7 @@ static bool fault_supports_stage2_huge_mapping(struct kvm_memory_slot *memslot,
 	 *   d -> f
 	 *   e -> g
 	 *   f -> h
-	 */
+	 *
 	if ((gpa_start & (map_size - 1)) != (uaddr_start & (map_size - 1)))
 		return false;
 
@@ -1657,9 +1661,10 @@ static bool fault_supports_stage2_huge_mapping(struct kvm_memory_slot *memslot,
 	 * Note that it doesn't matter if we do the check using the
 	 * userspace_addr or the base_gfn, as both are equally aligned (per
 	 * the check above) and equally sized.
-	 */
+	 *
 	return (hva & ~(map_size - 1)) >= uaddr_start &&
 	       (hva & ~(map_size - 1)) + map_size <= uaddr_end;
+*/
 }
 
 static u64 get_vmi_perm(struct kvm_vcpu *vcpu, bool writable, bool read_fault,
@@ -1729,8 +1734,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 	vma_pagesize = vma_kernel_pagesize(vma);
 	if (logging_active ||
-	    !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize) ||
-	    vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_SLP]) {
+	        !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize)) {
 		force_pte = true;
 		vma_pagesize = PAGE_SIZE;
 	}
