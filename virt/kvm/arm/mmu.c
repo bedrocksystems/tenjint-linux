@@ -1929,19 +1929,19 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					}
 					else {
 						if ((perm & KVM_VMI_SLP_W) &&
-						        kvm_arm64_slp_need_stop(vcpu, gpa, false, true, false)) {
+						        kvm_arm64_slp_page_callback(vcpu, gpa, false, true, false)) {
 							perm = KVM_VMI_SLP_R;
 						}
 						else if ((perm & KVM_VMI_SLP_R) &&
-						        kvm_arm64_slp_need_stop(vcpu, gpa, true, false, false)) {
+						        kvm_arm64_slp_page_callback(vcpu, gpa, true, false, false)) {
 							perm = KVM_VMI_SLP_X;
 						}
 						kvm_set_s2pte(&new_pte, perm);
 					}
 				}
 			}
-			else {
-				if (kvm_arm64_slp_need_stop(vcpu, fault_ipa, true, true, false)) {
+			else if (fault_status == FSC_FAULT) {
+				if (kvm_arm64_slp_page_callback(vcpu, fault_ipa, true, true, false)) {
 					kvm_set_s2pte(&new_pte, KVM_VMI_SLP_X);
 				}
 			}
