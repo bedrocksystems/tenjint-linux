@@ -54,11 +54,20 @@ bool kvm_arm64_task_switch_need_stop(struct kvm_vcpu *vcpu, u8 reg,
 	return false;
 }
 
-bool kvm_arm64_slp_need_stop(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
+bool kvm_arm64_slp_page_callback(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
                              bool write_fault, bool exec_fault) {
 	struct kvm_vmi_slp_node *i;
 	u64 gfn = gpa >> PAGE_SHIFT;
 
+	hash_for_each_possible(vcpu->arch.vmi_slp_ht, i, h, gfn) {
+		if (i->gfn == gfn)
+			return true;
+	}
+	return false;
+}
+
+bool kvm_arm64_slp_need_stop(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
+                             bool write_fault, bool exec_fault) {
 	if (read_fault && vcpu->arch.vmi_slp_global[KVM_VMI_SLP_R_INDEX]) {
 		return true;
 	}
@@ -69,12 +78,8 @@ bool kvm_arm64_slp_need_stop(struct kvm_vcpu *vcpu, u64 gpa, bool read_fault,
 		return true;
 	}
 
-	hash_for_each_possible(vcpu->arch.vmi_slp_ht, i, h, gfn) {
-		if (i->gfn == gfn)
-			return true;
-	}
-
-	return false;
+	return kvm_arm64_slp_page_callback(vcpu, gpa, read_fault, write_fault,
+	                                   exec_fault);
 }
 
 static int kvm_arm64_feature_control_task_switch(struct kvm_vcpu *vcpu,
