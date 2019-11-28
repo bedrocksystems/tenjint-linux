@@ -1928,22 +1928,27 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 						vmi_need_stop = true;
 					}
 					else {
-						if ((perm & KVM_VMI_SLP_W) &&
-						        kvm_arm64_slp_page_callback(vcpu, gpa, false, true, false)) {
-							perm = KVM_VMI_SLP_R;
-						}
-						else if ((perm & KVM_VMI_SLP_R) &&
-						        kvm_arm64_slp_page_callback(vcpu, gpa, true, false, false)) {
+						if ((perm & (KVM_VMI_SLP_R | KVM_VMI_SLP_W)) &&
+						        kvm_arm64_slp_page_callback(vcpu, gpa, true, true, false)) {
 							perm = KVM_VMI_SLP_X;
 						}
-						kvm_set_s2pte(&new_pte, perm);
+						new_pte = kvm_s2pte_update(kvm, new_pte, gfn, perm);
 					}
 				}
 			}
 			else if (fault_status == FSC_FAULT) {
 				if (kvm_arm64_slp_page_callback(vcpu, fault_ipa, true, true, false)) {
-					kvm_set_s2pte(&new_pte, KVM_VMI_SLP_X);
+					new_pte = kvm_s2pte_update(kvm, new_pte, gfn, KVM_VMI_SLP_X);
 				}
+			}
+			else {
+				if (writable) {
+					new_pte = kvm_s2pte_mkwrite(new_pte);
+					mark_page_dirty(kvm, gfn);
+				}
+
+				if (needs_exec)
+					new_pte = kvm_s2pte_mkexec(new_pte);
 			}
 		}
 		else {
