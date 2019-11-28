@@ -221,6 +221,26 @@ static inline pud_t kvm_s2pud_mkexec(pud_t pud)
 	return pud;
 }
 
+static inline pte_t kvm_s2pte_update(struct kvm *kvm, pte_t pte, gfn_t gfn, u64 perm)
+{
+	pte_val(pte) &= ~(PTE_S2_RDWR | PTE_S2_XN);
+
+	if (!(perm & KVM_VMI_SLP_X)) {
+		pte_val(pte) |= PTE_S2_XN;
+	}
+
+	if (perm & KVM_VMI_SLP_W) {
+		pte_val(pte) |= PTE_S2_RDWR;
+		mark_page_dirty(kvm, gfn);
+	}
+
+	if (perm & KVM_VMI_SLP_R) {
+		pte_val(pte) |= PTE_S2_RDONLY;
+	}
+
+	return pte;
+}
+
 static inline void kvm_set_s2pte(pte_t *ptep, u64 perm)
 {
 	pteval_t old_pteval, pteval, hw_perm = 0;
