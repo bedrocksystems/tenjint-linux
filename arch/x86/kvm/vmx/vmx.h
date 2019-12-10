@@ -28,7 +28,7 @@ extern u32 get_umwait_control_msr(void);
 #define NR_SHARED_MSRS	4
 #endif
 
-#define NR_LOADSTORE_MSRS 8
+#define NR_LOADSTORE_MSRS 128
 
 struct vmx_msrs {
 	unsigned int		nr;

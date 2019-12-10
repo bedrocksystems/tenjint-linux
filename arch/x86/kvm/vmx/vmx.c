@@ -7,6 +7,7 @@
  *
  * Copyright (C) 2006 Qumranet, Inc.
  * Copyright 2010 Red Hat, Inc. and/or its affiliates.
+ * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
  *
  * Authors:
  *   Avi Kivity   <avi@qumranet.com>
@@ -27,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/tboot.h>
 #include <linux/trace_events.h>
+#include <linux/kvm_vmi.h>
 
 #include <asm/apic.h>
 #include <asm/asm.h>
@@ -44,6 +46,7 @@
 #include <asm/spec-ctrl.h>
 #include <asm/virtext.h>
 #include <asm/vmx.h>
+#include <asm/intel-family.h>
 
 #include "capabilities.h"
 #include "cpuid.h"
@@ -60,9 +63,16 @@
 #include "vmcs12.h"
 #include "vmx.h"
 #include "x86.h"
+#include "vmi.h"
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
+
+static unsigned int vmi_msr_lbr_from = 0; // MSR_LBR_FROM
+static unsigned int vmi_msr_lbr_to = 0; // MSR_LBR_TO
+static unsigned int vmi_msr_lbr_tos = 0; // MSR_LBR_TOS
+static unsigned int vmi_msr_lbr_num = 0; // MAX_LBR_ENTRIES
+static unsigned int vmi_msr_lbr_sel_mask = 0; // LBR_SEL_MASK
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -891,6 +901,7 @@ static void clear_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr)
 	--m->guest.nr;
 	m->guest.val[i] = m->guest.val[m->guest.nr];
 	vmcs_write32(VM_ENTRY_MSR_LOAD_COUNT, m->guest.nr);
+	vmcs_write32(VM_EXIT_MSR_STORE_COUNT, m->guest.nr);
 
 skip_guest:
 	i = vmx_find_msr_index(&m->host, msr);
@@ -965,6 +976,7 @@ static void add_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr,
 	if (i < 0) {
 		i = m->guest.nr++;
 		vmcs_write32(VM_ENTRY_MSR_LOAD_COUNT, m->guest.nr);
+		vmcs_write32(VM_EXIT_MSR_STORE_COUNT, m->guest.nr);
 	}
 	m->guest.val[i].index = msr;
 	m->guest.val[i].value = guest_val;
@@ -978,6 +990,31 @@ static void add_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr,
 	}
 	m->host.val[j].index = msr;
 	m->host.val[j].value = host_val;
+}
+
+static u64 read_atomic_switch_msr_guest(struct vcpu_vmx *vmx, unsigned msr)
+{
+	unsigned i;
+	struct msr_autoload *m = &vmx->msr_autoload;
+
+	switch (msr) {
+	case MSR_EFER:
+		if (cpu_has_load_ia32_efer()) {
+			return vmcs_read64(GUEST_IA32_EFER);
+		}
+		break;
+	case MSR_CORE_PERF_GLOBAL_CTRL:
+		if (cpu_has_load_perf_global_ctrl()) {
+			return vmcs_read64(GUEST_IA32_PERF_GLOBAL_CTRL);
+		}
+		break;
+	}
+
+	for (i = 0; i < m->guest.nr; ++i)
+		if (m->guest.val[i].index == msr)
+			return m->guest.val[i].value;
+
+	return 0;
 }
 
 static bool update_transition_efer(struct vcpu_vmx *vmx, int efer_offset)
@@ -4224,6 +4261,7 @@ static void init_vmcs(struct vcpu_vmx *vmx)
 		vmcs_write64(VM_FUNCTION_CONTROL, 0);
 
 	vmcs_write32(VM_EXIT_MSR_STORE_COUNT, 0);
+	vmcs_write64(VM_EXIT_MSR_STORE_ADDR, __pa(vmx->msr_autoload.guest.val));
 	vmcs_write32(VM_EXIT_MSR_LOAD_COUNT, 0);
 	vmcs_write64(VM_EXIT_MSR_LOAD_ADDR, __pa(vmx->msr_autoload.host.val));
 	vmcs_write32(VM_ENTRY_MSR_LOAD_COUNT, 0);
@@ -4805,11 +4843,12 @@ static int handle_desc(struct kvm_vcpu *vcpu)
 
 static int handle_cr(struct kvm_vcpu *vcpu)
 {
-	unsigned long exit_qualification, val;
+	unsigned long exit_qualification, val, cr3;
 	int cr;
 	int reg;
 	int err;
 	int ret;
+	struct kvm_vmi_event_task_switch *ts;
 
 	exit_qualification = vmcs_readl(EXIT_QUALIFICATION);
 	cr = exit_qualification & 15;
@@ -4824,6 +4863,19 @@ static int handle_cr(struct kvm_vcpu *vcpu)
 			return kvm_complete_insn_gp(vcpu, err);
 		case 3:
 			WARN_ON_ONCE(enable_unrestricted_guest);
+			cr3 = kvm_read_cr3(vcpu);
+			if (kvm_vmx_task_switch_need_stop(vcpu,cr3,val)){
+				ts = (struct kvm_vmi_event_task_switch *)&vcpu->run->vmi_event;
+				ts->type = KVM_VMI_EVENT_TASK_SWITCH;
+				ts->old_cr3 = cr3;
+				ts->new_cr3 = val;
+				vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+
+				err = kvm_set_cr3(vcpu, val);
+				kvm_complete_insn_gp(vcpu, err);
+
+				return 0;
+			}
 			err = kvm_set_cr3(vcpu, val);
 			return kvm_complete_insn_gp(vcpu, err);
 		case 4:
@@ -5357,7 +5409,9 @@ static int handle_invalid_op(struct kvm_vcpu *vcpu)
 
 static int handle_monitor_trap(struct kvm_vcpu *vcpu)
 {
-	return 1;
+	vcpu->run->vmi_event.type = KVM_VMI_EVENT_MTF;
+	vcpu->run->exit_reason = KVM_EXIT_VMI_EVENT;
+	return 0;
 }
 
 static int handle_monitor(struct kvm_vcpu *vcpu)
@@ -6482,12 +6536,219 @@ void vmx_update_host_rsp(struct vcpu_vmx *vmx, unsigned long host_rsp)
 	}
 }
 
+static void atomic_switch_lbr_msrs(struct kvm_vcpu *vcpu,
+                                   struct vcpu_vmx *vmx)
+{
+	unsigned i = 0;
+	unsigned nr_msrs = vmi_msr_lbr_num;
+	unsigned long from;
+	unsigned long to;
+	unsigned long tos;
+	unsigned long select;
+
+	for (i = 0; i < nr_msrs; i++) {
+		rdmsrl(vmi_msr_lbr_from + i, from);
+		rdmsrl(vmi_msr_lbr_to + i, to);
+
+		// Set the FROM and the TO MSRs to zero to be able to
+		// distinguish which values in the LBR changed.
+		// Note: We cannot set them to their original value as the FROM
+		//       MSR contains flags in its upper bits that may cause 
+		//       the VM entry to fail. While the root cause of this is
+		//       unknown, it seems like the FROM value must be a
+		//       canonical address for the VM entry to succeed.
+		add_atomic_switch_msr(vmx, vmi_msr_lbr_from + i, 0, from, false);
+		add_atomic_switch_msr(vmx, vmi_msr_lbr_to + i, 0, to, false);
+	}
+
+	rdmsrl(vmi_msr_lbr_tos, tos);
+	add_atomic_switch_msr(vmx, vmi_msr_lbr_tos,
+	                      vcpu->vmi_lbr.tos,
+			    		  tos, false);
+
+	if (vmi_msr_lbr_sel_mask){
+		rdmsrl(MSR_LBR_SELECT, select);
+		add_atomic_switch_msr(vmx, MSR_LBR_SELECT,
+							vcpu->vmi_lbr_select,
+							select, false);
+	}
+}
+
+static void store_atomic_switch_lbr_msrs(struct kvm_vcpu *vcpu,
+                                         struct vcpu_vmx *vmx)
+{
+	unsigned i;
+	unsigned nr_msrs = vmi_msr_lbr_num;
+	unsigned long from;
+	unsigned long to;
+
+	for (i = 0; i < nr_msrs; i++) {
+		from = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_from + i);
+		to = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_to + i);
+
+		if (from != 0 || to != 0) {
+			vcpu->vmi_lbr.from[i] = from;
+			vcpu->vmi_lbr.to[i] = to;
+		}
+	}
+
+	vcpu->vmi_lbr.tos = read_atomic_switch_msr_guest(vmx, vmi_msr_lbr_tos);
+	vcpu->vmi_lbr.entries = nr_msrs;
+}
+
+
+#define LBR_SEL_MASK	0x3ff	/* valid bits in LBR_SELECT */
+static void vmx_vmi_init_lbr(void)
+{
+	switch (boot_cpu_data.x86_model) {
+	case INTEL_FAM6_CORE2_MEROM:
+	case INTEL_FAM6_CORE2_MEROM_L:
+	case INTEL_FAM6_CORE2_PENRYN:
+	case INTEL_FAM6_CORE2_DUNNINGTON:
+		// intel_pmu_lbr_init_core();
+		vmi_msr_lbr_from = MSR_LBR_CORE_FROM;
+		vmi_msr_lbr_to = MSR_LBR_CORE_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 4;
+		break;
+	case INTEL_FAM6_NEHALEM:
+	case INTEL_FAM6_NEHALEM_EP:
+	case INTEL_FAM6_NEHALEM_EX:
+	case INTEL_FAM6_WESTMERE:
+	case INTEL_FAM6_WESTMERE_EP:
+	case INTEL_FAM6_WESTMERE_EX:
+		// intel_pmu_lbr_init_nhm();
+		vmi_msr_lbr_from = MSR_LBR_NHM_FROM;
+		vmi_msr_lbr_to = MSR_LBR_NHM_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 16;
+		vmi_msr_lbr_sel_mask = LBR_SEL_MASK;
+		break;
+	case INTEL_FAM6_ATOM_BONNELL:
+	case INTEL_FAM6_ATOM_BONNELL_MID:
+	case INTEL_FAM6_ATOM_SALTWELL:
+	case INTEL_FAM6_ATOM_SALTWELL_MID:
+	case INTEL_FAM6_ATOM_SALTWELL_TABLET:
+		// intel_pmu_lbr_init_atom();
+		vmi_msr_lbr_from = MSR_LBR_CORE_FROM;
+		vmi_msr_lbr_to = MSR_LBR_CORE_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 8;
+		break;
+	case INTEL_FAM6_ATOM_SILVERMONT:
+	case INTEL_FAM6_ATOM_SILVERMONT_X:
+	case INTEL_FAM6_ATOM_SILVERMONT_MID:
+	case INTEL_FAM6_ATOM_AIRMONT:
+	case INTEL_FAM6_ATOM_AIRMONT_MID:
+		// intel_pmu_lbr_init_slm();
+		vmi_msr_lbr_from = MSR_LBR_CORE_FROM;
+		vmi_msr_lbr_to = MSR_LBR_CORE_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 8;
+		vmi_msr_lbr_sel_mask = LBR_SEL_MASK;
+		break;
+	case INTEL_FAM6_ATOM_GOLDMONT:
+	case INTEL_FAM6_ATOM_GOLDMONT_X:
+	case INTEL_FAM6_ATOM_GOLDMONT_PLUS:
+	case INTEL_FAM6_SKYLAKE_MOBILE:
+	case INTEL_FAM6_SKYLAKE_DESKTOP:
+	case INTEL_FAM6_SKYLAKE_X:
+	case INTEL_FAM6_KABYLAKE_MOBILE:
+	case INTEL_FAM6_KABYLAKE_DESKTOP:
+		// intel_pmu_lbr_init_skl();
+		vmi_msr_lbr_from = MSR_LBR_NHM_FROM;
+		vmi_msr_lbr_to = MSR_LBR_NHM_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 32;
+		vmi_msr_lbr_sel_mask = LBR_SEL_MASK;
+		break;
+	case INTEL_FAM6_SANDYBRIDGE:
+	case INTEL_FAM6_SANDYBRIDGE_X:
+	case INTEL_FAM6_IVYBRIDGE:
+	case INTEL_FAM6_IVYBRIDGE_X:
+	case INTEL_FAM6_HASWELL_CORE:
+	case INTEL_FAM6_HASWELL_X:
+	case INTEL_FAM6_HASWELL_ULT:
+	case INTEL_FAM6_HASWELL_GT3E:
+	case INTEL_FAM6_BROADWELL_CORE:
+	case INTEL_FAM6_BROADWELL_XEON_D:
+	case INTEL_FAM6_BROADWELL_GT3E:
+	case INTEL_FAM6_BROADWELL_X:
+		// intel_pmu_lbr_init_hsw();
+		// intel_pmu_lbr_init_snb();
+		vmi_msr_lbr_from = MSR_LBR_NHM_FROM;
+		vmi_msr_lbr_to = MSR_LBR_NHM_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 16;
+		vmi_msr_lbr_sel_mask = LBR_SEL_MASK;
+		break;
+	case INTEL_FAM6_XEON_PHI_KNL:
+	case INTEL_FAM6_XEON_PHI_KNM:
+		// intel_pmu_lbr_init_knl();
+		vmi_msr_lbr_from = MSR_LBR_NHM_FROM;
+		vmi_msr_lbr_to = MSR_LBR_NHM_TO;
+		vmi_msr_lbr_tos = MSR_LBR_TOS;
+		vmi_msr_lbr_num = 8;
+		vmi_msr_lbr_sel_mask = LBR_SEL_MASK;
+		break;
+	default:
+		kvm_vmi_warning("Unable to init LBR (%u).\n", boot_cpu_data.x86_model);
+		break;
+	}
+}
+
+static inline int vmx_vmi_lbr_feature_enabled(struct kvm_vcpu *vcpu)
+{
+	return (vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_LBR] && vmi_msr_lbr_num);
+}
+
+void vmx_vmi_set_lbr_select(struct kvm_vcpu *vcpu, u64 lbr_select)
+{
+	vcpu->vmi_lbr_select = lbr_select & vmi_msr_lbr_sel_mask;
+}
+
+int vmx_vmi_enable_lbr(struct kvm_vcpu *vcpu)
+{
+	u64 debug_ctrl;
+
+	if (vmi_msr_lbr_num == 0) {
+		return -ENODEV;
+	}
+
+	debug_ctrl = vmcs_read64(GUEST_IA32_DEBUGCTL);
+	debug_ctrl |= DEBUGCTLMSR_LBR;
+	vmcs_write64(GUEST_IA32_DEBUGCTL, debug_ctrl);
+
+	return 0;
+}
+
+void vmx_vmi_disable_lbr(struct kvm_vcpu *vcpu)
+{
+	unsigned i = 0;
+	unsigned nr_msrs = vmi_msr_lbr_num;
+	u64 debug_ctrl;
+
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	for (i = 0; i < nr_msrs; i++) {
+		clear_atomic_switch_msr(vmx, vmi_msr_lbr_from + i);
+		clear_atomic_switch_msr(vmx, vmi_msr_lbr_to + i);
+	}
+
+	clear_atomic_switch_msr(vmx, vmi_msr_lbr_tos);
+	clear_atomic_switch_msr(vmx, MSR_LBR_SELECT);
+
+	debug_ctrl = vmcs_read64(GUEST_IA32_DEBUGCTL);
+	debug_ctrl &= ~DEBUGCTLMSR_LBR;
+	vmcs_write64(GUEST_IA32_DEBUGCTL, debug_ctrl);
+}
+
 bool __vmx_vcpu_run(struct vcpu_vmx *vmx, unsigned long *regs, bool launched);
 
 static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
-	unsigned long cr3, cr4;
+	unsigned long cr3, cr4, debugctlmsr;
 
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
@@ -6543,6 +6804,9 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	atomic_switch_perf_msrs(vmx);
 	atomic_switch_umwait_control_msr(vmx);
+
+	if (vmx_vmi_lbr_feature_enabled(vcpu))
+		atomic_switch_lbr_msrs(vcpu, vmx);
 
 	if (enable_preemption_timer)
 		vmx_update_hv_timer(vcpu);
@@ -6618,6 +6882,9 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	loadsegment(es, __USER_DS);
 #endif
 
+	if (vmx_vmi_lbr_feature_enabled(vcpu))
+		store_atomic_switch_lbr_msrs(vcpu, vmx);
+
 	vcpu->arch.regs_avail = ~((1 << VCPU_REGS_RIP) | (1 << VCPU_REGS_RSP)
 				  | (1 << VCPU_EXREG_RFLAGS)
 				  | (1 << VCPU_EXREG_PDPTR)
@@ -6676,6 +6943,7 @@ static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
+	kvm_vmi_vcpu_uninit(vcpu);
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
 	free_vpid(vmx->vpid);
@@ -6825,6 +7093,8 @@ static struct kvm_vcpu *vmx_create_vcpu(struct kvm *kvm, unsigned int id)
 	vmx->pi_desc.sn = 1;
 
 	vmx->ept_pointer = INVALID_PAGE;
+
+	kvm_vmi_vcpu_init(&vmx->vcpu);
 
 	return &vmx->vcpu;
 
@@ -7981,8 +8251,23 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.nested_enable_evmcs = NULL,
 	.nested_get_evmcs_version = NULL,
 	.need_emulation_on_page_fault = vmx_need_emulation_on_page_fault,
+<<<<<<< HEAD
 	.apic_init_signal_blocked = vmx_apic_init_signal_blocked,
+=======
+
+	.vmi_feature_control = vmx_vmi_feature_control,
+>>>>>>> Rebase to v5.2 and general prep
 };
+
+void vmx_vmi_update_execution_controls(u32 exec_control)
+{
+	vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, exec_control);
+}
+
+u32 vmx_vmi_get_execution_controls(void)
+{
+	return vmcs_read32(CPU_BASED_VM_EXEC_CONTROL);
+}
 
 static void vmx_cleanup_l1d_flush(void)
 {
@@ -8067,6 +8352,8 @@ static int __init vmx_init(void)
 		enlightened_vmcs = false;
 	}
 #endif
+
+	vmx_vmi_init_lbr();
 
 	r = kvm_init(&vmx_x86_ops, sizeof(struct vcpu_vmx),
 		     __alignof__(struct vcpu_vmx), THIS_MODULE);

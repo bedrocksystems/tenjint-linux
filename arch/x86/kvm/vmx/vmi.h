@@ -68,8 +68,9 @@
 // Functions in vmx.c
 void vmx_vmi_update_execution_controls(u32 exec_control);
 u32 vmx_vmi_get_execution_controls(void);
-void vmx_vmi_enable_lbr(struct kvm_vcpu *vcpu);
+int vmx_vmi_enable_lbr(struct kvm_vcpu *vcpu);
 void vmx_vmi_disable_lbr(struct kvm_vcpu *vcpu);
+void vmx_vmi_set_lbr_select(struct kvm_vcpu *vcpu, u64 lbr_select);
 
 // Functions in vmi.c
 void kvm_vmi_vcpu_init(struct kvm_vcpu *vcpu);
