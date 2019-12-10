@@ -20,7 +20,7 @@ extern u64 host_efer;
 
 #define X2APIC_MSR(r) (APIC_BASE_MSR + ((r) >> 4))
 
-#define NR_AUTOLOAD_MSRS 8
+#define NR_AUTOLOAD_MSRS 128
 
 struct vmx_msrs {
 	unsigned int		nr;

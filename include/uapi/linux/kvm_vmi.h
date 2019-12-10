@@ -28,9 +28,7 @@
 
 #include <linux/ioctl.h>
 
-#define MAX_LBR_ENTRIES                   16
-#define MSR_LBR_FROM                      0x680
-#define MSR_LBR_TO                        0x6c0
+#define MAX_LBR_ENTRIES                   32
 
 #define KVM_VMI_FEATURE_TRAP_TASK_SWITCH  0
 #define KVM_VMI_FEATURE_LBR               1

@@ -158,12 +158,15 @@ int vmx_vmi_feature_control_task_switch(struct kvm_vcpu *vcpu, union kvm_vmi_fea
 
 int vmx_vmi_feature_control_lbr(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature)
 {
+	int r;
 	struct kvm_vmi_feature_lbr *lbr = &feature->lbr;
 
 	if (lbr->enable) {
+		r = vmx_vmi_enable_lbr(vcpu);
+		if (r)
+			return r;
+		vmx_vmi_set_lbr_select(vcpu, lbr->lbr_select);
 		vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_LBR] = 1;
-		vcpu->vmi_lbr_select = lbr->lbr_select;
-		vmx_vmi_enable_lbr(vcpu);
 	}
 	else {
 		vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_LBR] = 0;
@@ -171,7 +174,6 @@ int vmx_vmi_feature_control_lbr(struct kvm_vcpu *vcpu, union kvm_vmi_feature *fe
 	}
 
 	return 0;
-
 }
 
 int vmx_vmi_feature_control_mtf(struct kvm_vcpu *vcpu, union kvm_vmi_feature *feature)
