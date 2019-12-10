@@ -3929,7 +3929,7 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 {
 	struct kvm_vcpu *vcpu = filp->private_data;
 	void __user *argp = (void __user *)arg;
-	int r;
+	int r = 0;
 	union {
 		struct kvm_lapic_state *lapic;
 		struct kvm_xsave *xsave;
