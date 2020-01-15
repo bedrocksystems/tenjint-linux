@@ -2,6 +2,9 @@
 /*
  * vmx.h: VMX Architecture related definitions
  * Copyright (c) 2004, Intel Corporation.
+ * Modifications made by BedRock Systems, Inc. on
+ * Nov 11 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * A few random additions are:
  * Copyright (C) 2006 Qumranet

@@ -4,6 +4,10 @@
 
 /*
  * Copyright (c) 2017 FireEye, Inc. All Rights Reserved.
+ * Modifications made by BedRock Systems, Inc. on
+ * Jul 19 2019, Aug 06 2019, Aug 16 2019, Aug 19 2019,
+ * Aug 23 2019, Sep 10 2019, Oct 23 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * This work is licensed under the terms of the GNU GPL, version 2.  See
  * the COPYING file in the top-level directory.

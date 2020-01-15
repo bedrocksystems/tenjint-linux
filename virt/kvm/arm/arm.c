@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 - Virtual Open Systems and Columbia University
+ * Modifications made by BedRock Systems, Inc. on
+ * Aug 16 2019, Aug 21 2019, Aug 23 2019, Aug 29 2019,
+ * Aug 29 2019, Oct 18 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  * Author: Christoffer Dall <c.dall@virtualopensystems.com>
  */
 

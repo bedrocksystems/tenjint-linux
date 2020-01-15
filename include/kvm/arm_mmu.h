@@ -1,7 +1,7 @@
 /*
  * KVM VMI support
  *
- * Copyright (C) 2019 Bedrock Systems, Inc. All Rights Reserved.
+ * Copyright (C) 2020 Bedrock Systems, Inc.
  *
  * Authors:
  *  Jonas Pfoh      <jonas@bedrocksystems.com>
