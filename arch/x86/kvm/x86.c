@@ -9,6 +9,10 @@
  * Copyright IBM Corporation, 2008
  * Copyright 2010 Red Hat, Inc. and/or its affiliates.
  * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
+ * Modifications made by BedRock Systems, Inc. on
+ * Dec 10 2019, Jul 19 2019, Aug 06 2019, Aug 29 2019,
+ * Aug 29 2019, Oct 02 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
  *   Avi Kivity   <avi@qumranet.com>

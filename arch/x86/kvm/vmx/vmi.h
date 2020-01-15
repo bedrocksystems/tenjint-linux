@@ -2,6 +2,9 @@
  * KVM VMI support
  *
  * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
+ * Modifications made by BedRock Systems, Inc. on
+ * Dec 10 2019, Aug 29 2019, Sep 10 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
  *  Jonas Pfoh      <jonas.pfoh@fireeye.com>

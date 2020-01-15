@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 ARM Ltd.
+ * Modifications made by BedRock Systems, Inc. on
+ * Oct 23 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
  * Author: Marc Zyngier <marc.zyngier@arm.com>
  */
 
