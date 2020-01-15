@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Modifications made by BedRock Systems, Inc. on
+ * Dec 10 2019,
+ * which modifications are (c) 2020 BedRock Systems, Inc.
+ */
 #ifndef __KVM_X86_VMX_H
 #define __KVM_X86_VMX_H
 
