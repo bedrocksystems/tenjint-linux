@@ -12,7 +12,7 @@
  * Dec 10 2019, Jul 12 2019, Jul 18 2019, Jul 19 2019,
  * Aug 29 2019, Aug 29 2019, Sep 10 2019, Sep 10 2019,
  * Oct 02 2019, Nov 07 2019, Nov 11 2019, Nov 11 2019,
- * Jan 29 2020,
+ * Jan 29 2020, Jan 31 2020,
  * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
@@ -6818,10 +6818,12 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	debugctlmsr = get_debugctlmsr();
 
-	if (vmx_vmi_get_execution_controls() & CPU_BASED_MONITOR_TRAP_FLAG)
-		vmx_cancel_injection(vcpu);
-	else
+	if (vmx_vmi_get_execution_controls() & CPU_BASED_MONITOR_TRAP_FLAG) {
+		vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, 0);
+	}
+	else {
 		vmx_update_hv_timer(vcpu);
+	}
 
 	/*
 	 * If this vCPU has touched SPEC_CTRL, restore the guest's value if
