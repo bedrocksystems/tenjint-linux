@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Modifications made by BedRock Systems, Inc. on
- * Dec 10 2019,
+ * Dec 10 2019, Jan 31 2020,
  * which modifications are (c) 2020 BedRock Systems, Inc.
  */
 #ifndef __KVM_X86_VMX_H
@@ -277,6 +277,8 @@ struct vcpu_vmx {
 	u64 ept_pointer;
 
 	struct pt_desc pt_desc;
+
+	u32 intr_info_field;
 };
 
 enum ept_pointers_status {
