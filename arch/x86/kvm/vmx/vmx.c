@@ -6814,6 +6814,7 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	debugctlmsr = get_debugctlmsr();
 
 	if (vmx_vmi_get_execution_controls() & CPU_BASED_MONITOR_TRAP_FLAG) {
+		vmx->intr_info_field = vmcs_read32(VM_ENTRY_INTR_INFO_FIELD);
 		vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, 0);
 	}
 	else {
@@ -6922,6 +6923,10 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx->loaded_vmcs->launched = 1;
 	vmx->idt_vectoring_info = vmcs_read32(IDT_VECTORING_INFO_FIELD);
+	if (vmx->intr_info_field & INTR_INFO_VALID_MASK) {
+		vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, vmx->intr_info_field);
+	}
+	vmx->intr_info_field = 0;
 
 	vmx_complete_atomic_exit(vmx);
 	vmx_recover_nmi_blocking(vmx);
