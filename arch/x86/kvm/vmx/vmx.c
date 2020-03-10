@@ -12,7 +12,7 @@
  * Dec 10 2019, Jul 12 2019, Jul 18 2019, Jul 19 2019,
  * Aug 29 2019, Aug 29 2019, Sep 10 2019, Sep 10 2019,
  * Oct 02 2019, Nov 07 2019, Nov 11 2019, Nov 11 2019,
- * Jan 29 2020, Jan 31 2020,
+ * Jan 29 2020, Jan 31 2020, Mar 11 2020
  * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
@@ -6854,7 +6854,7 @@ bool __vmx_vcpu_run(struct vcpu_vmx *vmx, unsigned long *regs, bool launched);
 static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
-	unsigned long cr3, cr4, debugctlmsr;
+	unsigned long cr3, cr4;
 
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
