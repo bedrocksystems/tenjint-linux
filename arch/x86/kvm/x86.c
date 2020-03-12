@@ -11,7 +11,7 @@
  * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
  * Modifications made by BedRock Systems, Inc. on
  * Dec 10 2019, Jul 19 2019, Aug 06 2019, Aug 29 2019,
- * Aug 29 2019, Oct 02 2019,
+ * Aug 29 2019, Oct 02 2019, Mar 12 2020
  * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
@@ -8457,8 +8457,10 @@ static int vcpu_run(struct kvm_vcpu *vcpu)
 			break;
 
 		kvm_clear_request(KVM_REQ_PENDING_TIMER, vcpu);
-		if (kvm_cpu_has_pending_timer(vcpu))
-			kvm_inject_pending_timer_irqs(vcpu);
+		if (!vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_MTF]) {
+			if (kvm_cpu_has_pending_timer(vcpu))
+				kvm_inject_pending_timer_irqs(vcpu);
+		}
 
 		if (dm_request_for_irq_injection(vcpu) &&
 			kvm_vcpu_ready_for_interrupt_injection(vcpu)) {

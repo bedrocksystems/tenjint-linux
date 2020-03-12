@@ -4,7 +4,7 @@
  * Copyright (C) 2017 FireEye, Inc. All Rights Reserved.
  * Modifications made by BedRock Systems, Inc. on
  * Dec 10 2019, Jul 18 2019, Aug 29 2019, Sep 05 2019,
- * Sep 10 2019, Sep 10 2019,
+ * Sep 10 2019, Sep 10 2019, Mar 12 2020
  * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
@@ -225,9 +225,11 @@ int vmx_vmi_feature_control_mtf(struct kvm_vcpu *vcpu, union kvm_vmi_feature *fe
 	exec_ctls = vmx_vmi_get_execution_controls();
 
 	if(mtf->enable){
+		vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_MTF] = 1;
 		exec_ctls |= CPU_BASED_MONITOR_TRAP_FLAG;
 	}
 	else{
+		vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_MTF] = 0;
 		exec_ctls &= ~CPU_BASED_MONITOR_TRAP_FLAG;
 	}
 

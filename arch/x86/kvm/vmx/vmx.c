@@ -12,7 +12,7 @@
  * Dec 10 2019, Jul 12 2019, Jul 18 2019, Jul 19 2019,
  * Aug 29 2019, Aug 29 2019, Sep 10 2019, Sep 10 2019,
  * Oct 02 2019, Nov 07 2019, Nov 11 2019, Nov 11 2019,
- * Jan 29 2020, Jan 31 2020, Mar 11 2020
+ * Jan 29 2020, Jan 31 2020, Mar 11 2020, Mar 12 2020
  * which modifications are (c) 2020 BedRock Systems, Inc.
  *
  * Authors:
@@ -6918,15 +6918,9 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		vmx_update_hv_timer(vcpu);
 
 	if (lapic_in_kernel(vcpu) &&
-		vcpu->arch.apic->lapic_timer.timer_advance_ns)
+		vcpu->arch.apic->lapic_timer.timer_advance_ns &&
+		!vcpu->vmi_feature_enabled[KVM_VMI_FEATURE_MTF]) {
 		kvm_wait_lapic_expire(vcpu);
-
-	if (vmx_vmi_get_execution_controls() & CPU_BASED_MONITOR_TRAP_FLAG) {
-		vmx->intr_info_field = vmcs_read32(VM_ENTRY_INTR_INFO_FIELD);
-		vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, 0);
-	}
-	else {
-		vmx_update_hv_timer(vcpu);
 	}
 
 	/*
@@ -7034,10 +7028,6 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx->loaded_vmcs->launched = 1;
 	vmx->idt_vectoring_info = vmcs_read32(IDT_VECTORING_INFO_FIELD);
-	if (vmx->intr_info_field & INTR_INFO_VALID_MASK) {
-		vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, vmx->intr_info_field);
-	}
-	vmx->intr_info_field = 0;
 
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);
